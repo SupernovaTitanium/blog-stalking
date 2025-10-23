@@ -16,6 +16,7 @@ class AzureTranslator:
         api_version: str,
         target_language: str,
         max_chars: int = 4000,
+        temperature: float | None = None,
     ):
         self.client = AzureOpenAI(
             api_key=api_key,
@@ -25,6 +26,7 @@ class AzureTranslator:
         self.deployment = deployment
         self.target_language = target_language
         self.max_chars = max_chars
+        self.temperature = temperature
 
     def translate_batch(self, texts: Sequence[str]) -> List[str]:
         translations: List[str] = []
@@ -39,14 +41,17 @@ class AzureTranslator:
                 "Return only the translation; keep paragraph breaks."
             )
             try:
-                response = self.client.chat.completions.create(
-                    model=self.deployment,
-                    messages=[
+                kwargs = {
+                    "model": self.deployment,
+                    "messages": [
                         {"role": "system", "content": prompt},
                         {"role": "user", "content": text[: self.max_chars]},
                     ],
-                    temperature=0.2,
-                )
+                }
+                if self.temperature is not None:
+                    kwargs["temperature"] = self.temperature
+
+                response = self.client.chat.completions.create(**kwargs)
                 translated = response.choices[0].message.content.strip()
             except Exception as exc:
                 logger.exception("Translation failed")
