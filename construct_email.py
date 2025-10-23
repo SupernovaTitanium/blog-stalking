@@ -1,173 +1,129 @@
-from paper import ArxivPaper
-import math
-from tqdm import tqdm
+from __future__ import annotations
+
+from datetime import datetime
 from email.header import Header
 from email.mime.text import MIMEText
-from email.utils import parseaddr, formataddr
+from email.utils import formataddr, parseaddr
+from html import escape
+from typing import Sequence
+
 import smtplib
-import datetime
-import time
 from loguru import logger
-from markdown import markdown as md_to_html
-framework = """
-<!DOCTYPE HTML>
+
+from tao_feed import TaoPost
+
+FRAMEWORK = """\
+<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
   <style>
-    .star-wrapper {
-      font-size: 1.3em; /* 调整星星大小 */
-      line-height: 1; /* 确保垂直对齐 */
-      display: inline-flex;
-      align-items: center; /* 保持对齐 */
-    }
-    .half-star {
-      display: inline-block;
-      width: 0.5em; /* 半颗星的宽度 */
-      overflow: hidden;
-      white-space: nowrap;
-      vertical-align: middle;
-    }
-    .full-star {
-      vertical-align: middle;
-    }
+    body {{ font-family: Arial, sans-serif; }}
+    table.post {{ width: 100%; border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #f9f9f9; }}
+    .meta {{ color: #666; font-size: 14px; margin-bottom: 12px; }}
+    .translation {{ margin-top: 12px; padding: 12px; background: #fff6e6; border-radius: 6px; }}
   </style>
 </head>
 <body>
-
-<div>
-    __CONTENT__
-</div>
-
+{content}
 <br><br>
-<div>
-To unsubscribe, remove your email in your Github Action setting.
+<div style="color:#888;font-size:12px;">
+  You receive this email because the Tao Daily Digest workflow is active.
 </div>
-
 </body>
 </html>
 """
 
-def get_empty_html():
-  block_template = """
-  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f9f9f9;">
-  <tr>
-    <td style="font-size: 20px; font-weight: bold; color: #333;">
-        No Papers Today. Take a Rest!
-    </td>
-  </tr>
-  </table>
-  """
-  return block_template
-
-def get_block_html(title:str, authors:str, rate:str,arxiv_id:str, abstract:str, pdf_url:str, code_url:str=None, affiliations:str=None):
-    code = f'<a href="{code_url}" style="display: inline-block; text-decoration: none; font-size: 14px; font-weight: bold; color: #fff; background-color: #5bc0de; padding: 8px 16px; border-radius: 4px; margin-left: 8px;">Code</a>' if code_url else ''
-    block_template = """
-    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f9f9f9;">
-    <tr>
-        <td style="font-size: 20px; font-weight: bold; color: #333;">
-            {title}
-        </td>
-    </tr>
-    <tr>
-        <td style="font-size: 14px; color: #666; padding: 8px 0;">
-            {authors}
-            <br>
-            <i>{affiliations}</i>
-        </td>
-    </tr>
-    <tr>
-        <td style="font-size: 14px; color: #333; padding: 8px 0;">
-            <strong>Relevance:</strong> {rate}
-        </td>
-    </tr>
-    <tr>
-        <td style="font-size: 14px; color: #333; padding: 8px 0;">
-            <strong>arXiv ID:</strong> <a href="https://arxiv.org/abs/{arxiv_id}" target="_blank">{arxiv_id}</a>
-        </td>
-    </tr>
-    <tr>
-        <td style="font-size: 14px; color: #333; padding: 8px 0;">
-            {abstract}
-        </td>
-    </tr>
-
-    <tr>
-        <td style="padding: 8px 0;">
-            <a href="{pdf_url}" style="display: inline-block; text-decoration: none; font-size: 14px; font-weight: bold; color: #fff; background-color: #d9534f; padding: 8px 16px; border-radius: 4px;">PDF</a>
-            {code}
-        </td>
-    </tr>
+EMPTY_BLOCK = """\
+<table class="post">
+  <tr><td style="font-size:18px; font-weight:bold; color:#333;">No new posts today 🎉</td></tr>
+  <tr><td style="color:#666; font-size:14px; padding-top:8px;">
+    Tao didn't publish anything in the selected time window.
+  </td></tr>
 </table>
 """
-    return block_template.format(title=title, authors=authors,rate=rate,arxiv_id=arxiv_id, abstract=abstract, pdf_url=pdf_url, code=code, affiliations=affiliations)
 
-def get_stars(score:float):
-    full_star = '<span class="full-star">⭐</span>'
-    half_star = '<span class="half-star">⭐</span>'
-    low = 6
-    high = 8
-    if score <= low:
-        return ''
-    elif score >= high:
-        return full_star * 5
-    else:
-        interval = (high-low) / 10
-        star_num = math.ceil((score-low) / interval)
-        full_star_num = int(star_num/2)
-        half_star_num = star_num - full_star_num * 2
-        return '<div class="star-wrapper">'+full_star * full_star_num + half_star * half_star_num + '</div>'
+POST_TEMPLATE = """\
+<table class="post">
+  <tr>
+    <td style="font-size:20px; font-weight:bold;">
+      <a href="{url}" target="_blank" style="color:#333; text-decoration:none;">{title}</a>
+    </td>
+  </tr>
+  <tr>
+    <td class="meta">
+      Published: {published}
+    </td>
+  </tr>
+  <tr>
+    <td>
+      {original_html}
+    </td>
+  </tr>
+  <tr>
+    <td class="translation">
+      <strong>Translation ({target_language}):</strong><br/>
+      {translation_html}
+    </td>
+  </tr>
+</table>
+"""
 
 
-def render_email(papers:list[ArxivPaper]):
-    parts = []
-    if len(papers) == 0 :
-        return framework.replace('__CONTENT__', get_empty_html())
-    
-    for p in tqdm(papers,desc='Rendering Email'):
-        rate = get_stars(p.score)
-        author_list = [a.name for a in p.authors]
-        num_authors = len(author_list)
-        
-        if num_authors <= 5:
-            authors = ', '.join(author_list)
-        else:
-            authors = ', '.join(author_list[:3] + ['...'] + author_list[-2:])
-        if p.affiliations is not None:
-            affiliations = p.affiliations[:5]
-            affiliations = ', '.join(affiliations)
-            if len(p.affiliations) > 5:
-                affiliations += ', ...'
-        else:
-            affiliations = 'Unknown Affiliation'
+def _format_datetime(dt_obj: datetime) -> str:
+    local = dt_obj.astimezone()
+    return local.strftime("%Y-%m-%d %H:%M %Z")
 
-        # 這兩行取代原本用 p.tldr 的地方
-        body_md = getattr(p, "tldr_markdown", None) or p.tldr
-        body_html = md_to_html(body_md) if body_md is p.tldr_markdown else p.tldr.replace('\n', '<br/>')
 
-        parts.append(get_block_html(p.title, authors, rate, p.arxiv_id, body_html, p.pdf_url, p.code_url, affiliations))
-        time.sleep(10)
+def _render_translation(text: str | None) -> str:
+    if not text:
+        return "<em>No translation generated.</em>"
+    return "<br/>".join(escape(line) for line in text.splitlines())
 
-    content = '<br>' + '</br><br>'.join(parts) + '</br>'
-    return framework.replace('__CONTENT__', content)
 
-def send_email(sender:str, receiver:str, password:str,smtp_server:str,smtp_port:int, html:str,):
-    def _format_addr(s):
-        name, addr = parseaddr(s)
-        return formataddr((Header(name, 'utf-8').encode(), addr))
+def render_email(posts: Sequence[TaoPost], target_language: str) -> str:
+    if not posts:
+        return FRAMEWORK.format(content=EMPTY_BLOCK)
 
-    msg = MIMEText(html, 'html', 'utf-8')
-    msg['From'] = _format_addr('Github Action <%s>' % sender)
-    msg['To'] = _format_addr('You <%s>' % receiver)
-    today = datetime.datetime.now().strftime('%Y/%m/%d')
-    msg['Subject'] = Header(f'Daily arXiv {today}', 'utf-8').encode()
+    blocks = []
+    for post in posts:
+        blocks.append(
+            POST_TEMPLATE.format(
+                title=escape(post.title),
+                url=post.url,
+                published=_format_datetime(post.published),
+                original_html=post.content_html,
+                target_language=escape(target_language),
+                translation_html=_render_translation(post.translation),
+            )
+        )
+    return FRAMEWORK.format(content="<br><br>".join(blocks))
+
+
+def send_email(
+    sender: str,
+    receiver: str,
+    password: str,
+    smtp_server: str,
+    smtp_port: int,
+    html: str,
+    subject: str,
+) -> None:
+    def _format_addr(addr: str) -> str:
+        name, email = parseaddr(addr)
+        return formataddr((Header(name or "", "utf-8").encode(), email))
+
+    msg = MIMEText(html, "html", "utf-8")
+    msg["From"] = _format_addr(f"Tao Stalking <{sender}>")
+    msg["To"] = _format_addr(f"You <{receiver}>")
+    msg["Subject"] = Header(subject, "utf-8").encode()
 
     try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
         server.starttls()
-    except Exception as e:
-        logger.warning(f"Failed to use TLS. {e}")
-        logger.warning(f"Try to use SSL.")
-        server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+    except Exception as exc:
+        logger.debug(f"Falling back to SMTPS: {exc}")
+        server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=30)
 
     server.login(sender, password)
     server.sendmail(sender, [receiver], msg.as_string())

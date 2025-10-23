@@ -19,21 +19,20 @@ jobs:
 
       - name: Run script
         env:
-          ZOTERO_ID: ${{ secrets.ZOTERO_ID }}
-          ZOTERO_KEY: ${{ secrets.ZOTERO_KEY }}
-          ZOTERO_IGNORE: ${{ vars.ZOTERO_IGNORE }}
-          ARXIV_QUERY: ${{ secrets.ARXIV_QUERY }}
+          FEED_URL: ${{ vars.FEED_URL }}
+          WINDOW_HOURS: ${{ vars.WINDOW_HOURS }}
+          MAX_POST_NUM: ${{ vars.MAX_POST_NUM }}
           SEND_EMPTY: ${{ vars.SEND_EMPTY }}
+          TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE }}
+          EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SENDER: ${{ secrets.SENDER }}
-          RECEIVER: ${{ secrets.RECEIVER }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-          MAX_PAPER_NUM: ${{ secrets.MAX_PAPER_NUM }}
-          USE_LLM_API: ${{ secrets.USE_LLM_API }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
-          MODEL_NAME: ${{ secrets.MODEL_NAME }}
-          LANGUAGE: ${{ vars.LANGUAGE }}
+          RECEIVER: ${{ secrets.RECEIVER }}
         run: |
           uv run main.py --debug
