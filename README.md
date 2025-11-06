@@ -18,6 +18,11 @@
 
 ---
 
+## Tao Feed Setup
+- `FEED_URL` defaults to `https://mathstodon.xyz/@tao.rss`. Override it to track a different Mastodon account.
+- `BLOG_FEED_URL` defaults to `https://terrytao.wordpress.com/feed/`, which includes posts such as Terry Tao’s “Mathematical exploration and discovery at scale”. Leave it blank if you only want the Mastodon feed.
+- The translator automatically chunks long posts so that every paragraph is translated without truncation while keeping LaTeX and other math notation intact.
+
 <p align="center"> Recommend new arxiv papers of your interest daily according to your Zotero library.
     <br> 
 </p>
