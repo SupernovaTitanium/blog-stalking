@@ -39,6 +39,12 @@ if __name__ == "__main__":
         help="Mastodon RSS feed URL for Tao.",
     )
     add_argument(
+        "--blog_feed_url",
+        type=str,
+        default="https://terrytao.wordpress.com/feed/",
+        help="WordPress RSS feed URL for Tao's blog.",
+    )
+    add_argument(
         "--window_hours",
         type=int,
         default=24,
@@ -115,8 +121,20 @@ if __name__ == "__main__":
         )
 
     limit = None if args.max_post_num == -1 else args.max_post_num
-    logger.info("Fetching Tao posts...")
-    posts = fetch_recent_posts(args.feed_url, args.window_hours, limit=limit)
+    feed_urls = []
+    for url in (args.feed_url, args.blog_feed_url):
+        if url and url not in feed_urls:
+            feed_urls.append(url)
+
+    logger.info(f"Fetching Tao posts from {len(feed_urls)} feed(s)...")
+    posts_by_id = {}
+    for url in feed_urls:
+        for post in fetch_recent_posts(url, args.window_hours):
+            posts_by_id[post.id] = post
+
+    posts = sorted(posts_by_id.values(), key=lambda p: p.published)
+    if limit is not None and limit > 0:
+        posts = posts[-limit:]
     if not posts:
         logger.info("No new posts found in the requested window.")
         if not args.send_empty:
