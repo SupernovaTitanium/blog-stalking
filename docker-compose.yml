@@ -1,17 +1,17 @@
 services:
-  tao-staking:
+  blog-pusher:
     build:
       context: .
       dockerfile: Dockerfile
-    image: local/tao-staking:latest
+    image: local/blog-pusher:latest
     restart: "no"
     environment:
-      - FEED_URL=https://mathstodon.xyz/@tao.rss
+      - FEED_LIST=feeds/blogs.json
       - WINDOW_HOURS=24
-      - MAX_POST_NUM=10
+      - MAX_POST_NUM=-1
       - SEND_EMPTY=false
       - TARGET_LANGUAGE=Chinese (Traditional)
-      - EMAIL_SUBJECT_PREFIX=Tao Daily Digest
+      - EMAIL_SUBJECT_PREFIX=Blog Pusher Digest
       - AZURE_OPENAI_KEY=your-azure-key
       - AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
       - AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini

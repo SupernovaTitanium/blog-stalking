@@ -1,4 +1,4 @@
-name: Send emails daily
+name: Blog Pusher Digest
 on:
   workflow_dispatch:
   schedule:
@@ -10,9 +10,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          repository: ${{ vars.REPOSITORY }}
-          ref: ${{ vars.REF }}
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
@@ -21,16 +18,18 @@ jobs:
 
       - name: Run script
         env:
-          FEED_URL: ${{ vars.FEED_URL }}
-          WINDOW_HOURS: ${{ vars.WINDOW_HOURS }}
-          MAX_POST_NUM: ${{ vars.MAX_POST_NUM }}
-          SEND_EMPTY: ${{ vars.SEND_EMPTY }}
-          TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE }}
-          EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX }}
+          FEED_LIST: ${{ vars.FEED_LIST || 'feeds/blogs.json' }}
+          FEED_URL: ${{ vars.FEED_URL || '' }}
+          BLOG_FEED_URL: ${{ vars.BLOG_FEED_URL || '' }}
+          WINDOW_HOURS: ${{ vars.WINDOW_HOURS || '24' }}
+          MAX_POST_NUM: ${{ vars.MAX_POST_NUM || '-1' }}
+          SEND_EMPTY: ${{ vars.SEND_EMPTY || 'false' }}
+          TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE || 'Chinese (Traditional)' }}
+          EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX || 'Blog Pusher Digest' }}
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
-          AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION || '2024-02-01' }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SENDER: ${{ secrets.SENDER }}

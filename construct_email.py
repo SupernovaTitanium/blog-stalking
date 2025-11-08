@@ -10,7 +10,7 @@ from typing import Sequence
 import smtplib
 from loguru import logger
 
-from tao_feed import TaoPost
+from feeds import FeedPost
 
 FRAMEWORK = """\
 <!DOCTYPE html>
@@ -28,7 +28,7 @@ FRAMEWORK = """\
 {content}
 <br><br>
 <div style="color:#888;font-size:12px;">
-  You receive this email because the Tao Daily Digest workflow is active.
+  You receive this email because the Blog Pusher workflow is active.
 </div>
 </body>
 </html>
@@ -38,7 +38,7 @@ EMPTY_BLOCK = """\
 <table class="post">
   <tr><td style="font-size:18px; font-weight:bold; color:#333;">No new posts today 🎉</td></tr>
   <tr><td style="color:#666; font-size:14px; padding-top:8px;">
-    Tao didn't publish anything in the selected time window.
+    No tracked feed published anything in the selected time window.
   </td></tr>
 </table>
 """
@@ -52,7 +52,7 @@ POST_TEMPLATE = """\
   </tr>
   <tr>
     <td class="meta">
-      Published: {published}
+      Published: {published} &middot; Source: {source}
     </td>
   </tr>
   <tr>
@@ -81,7 +81,7 @@ def _render_translation(text: str | None) -> str:
     return "<br/>".join(escape(line) for line in text.splitlines())
 
 
-def render_email(posts: Sequence[TaoPost], target_language: str) -> str:
+def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
     if not posts:
         return FRAMEWORK.format(content=EMPTY_BLOCK)
 
@@ -93,6 +93,7 @@ def render_email(posts: Sequence[TaoPost], target_language: str) -> str:
                 url=post.url,
                 published=_format_datetime(post.published),
                 original_html=post.content_html,
+                source=escape(post.source or "Unknown"),
                 target_language=escape(target_language),
                 translation_html=_render_translation(post.translation),
             )
@@ -114,7 +115,7 @@ def send_email(
         return formataddr((Header(name or "", "utf-8").encode(), email))
 
     msg = MIMEText(html, "html", "utf-8")
-    msg["From"] = _format_addr(f"Tao Stalking <{sender}>")
+    msg["From"] = _format_addr(f"Blog Pusher <{sender}>")
     msg["To"] = _format_addr(f"You <{receiver}>")
     msg["Subject"] = Header(subject, "utf-8").encode()
 

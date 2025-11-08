@@ -1,0 +1,342 @@
+[
+  {
+    "name": "Whats New - Terence Tao",
+    "site": "https://terrytao.wordpress.com",
+    "feed": "https://terrytao.wordpress.com/feed/"
+  },
+  {
+    "name": "Gowerss Weblog",
+    "site": "https://gowers.wordpress.com",
+    "feed": "https://gowers.wordpress.com/feed/"
+  },
+  {
+    "name": "Math and Programming",
+    "site": "https://jeremykun.com",
+    "feed": "https://jeremykun.com/feed/"
+  },
+  {
+    "name": "Windows on Theory",
+    "site": "https://windowsontheory.org",
+    "feed": "https://windowsontheory.org/feed/"
+  },
+  {
+    "name": "Computational Complexity Blog",
+    "site": "https://blog.computationalcomplexity.org",
+    "feed": "https://blog.computationalcomplexity.org/feeds/posts/default"
+  },
+  {
+    "name": "Godels Lost Letter and P=NP",
+    "site": "https://rjlipton.com",
+    "feed": "https://rjlipton.com/feed/"
+  },
+  {
+    "name": "Shtetl-Optimized",
+    "site": "https://scottaaronson.blog",
+    "feed": "https://scottaaronson.blog/?feed=rss2"
+  },
+  {
+    "name": "Off the Convex Path",
+    "site": "https://offconvex.org",
+    "feed": "https://offconvex.org/feed/"
+  },
+  {
+    "name": "Parameter-free Learning and Optimization",
+    "site": "https://parameterfree.com",
+    "feed": "https://parameterfree.com/feed/"
+  },
+  {
+    "name": "BAIR Blog",
+    "site": "https://bair.berkeley.edu/blog",
+    "feed": "https://bair.berkeley.edu/blog/feed/"
+  },
+  {
+    "name": "John D Cook Blog",
+    "site": "https://www.johndcook.com/blog",
+    "feed": "https://www.johndcook.com/blog/feed/"
+  },
+  {
+    "name": "Steveys Blog Rants",
+    "site": "https://steve-yegge.blogspot.com",
+    "feed": "https://steve-yegge.blogspot.com/feeds/posts/default"
+  },
+  {
+    "name": "Brendan Greggs Blog",
+    "site": "https://www.brendangregg.com/blog",
+    "feed": "https://www.brendangregg.com/blog/rss.xml"
+  },
+  {
+    "name": "Schneier on Security",
+    "site": "https://www.schneier.com",
+    "feed": "https://www.schneier.com/feed/"
+  },
+  {
+    "name": "Ken Shirriff",
+    "site": "https://www.righto.com",
+    "feed": "https://www.righto.com/feeds/posts/default"
+  },
+  {
+    "name": "Bartosz Milewskis Programming Cafe",
+    "site": "https://bartoszmilewski.com",
+    "feed": "https://bartoszmilewski.com/feed/"
+  },
+  {
+    "name": "Paul Graham Essays",
+    "site": "https://paulgraham.com",
+    "feed": "http://www.aaronsw.com/pg/pg.rss"
+  },
+  {
+    "name": "Rasmus Toys Blog",
+    "site": "https://toys.lerdorf.com",
+    "feed": "https://toys.lerdorf.com/rss"
+  },
+  {
+    "name": "Simon Willison",
+    "site": "https://simonwillison.net",
+    "feed": "https://simonwillison.net/atom/"
+  },
+  {
+    "name": "Rands in Repose",
+    "site": "https://randsinrepose.com",
+    "feed": "https://randsinrepose.com/feed/"
+  },
+  {
+    "name": "Dan Luu",
+    "site": "https://danluu.com",
+    "feed": "https://danluu.com/atom.xml"
+  },
+  {
+    "name": "Fabien Sanglard",
+    "site": "https://fabiensanglard.net",
+    "feed": "https://fabiensanglard.net/rss.xml"
+  },
+  {
+    "name": "arg min",
+    "site": "https://argmin.substack.com",
+    "feed": "https://argmin.substack.com/feed"
+  },
+  {
+    "name": "DeepMind Blog",
+    "site": "https://deepmind.google/blog",
+    "feed": "https://deepmind.google/blog/feed"
+  },
+  {
+    "name": "ML@CMU",
+    "site": "https://blog.ml.cmu.edu",
+    "feed": "https://blog.ml.cmu.edu/feed/"
+  },
+  {
+    "name": "NeurIPS Blog",
+    "site": "https://blog.neurips.cc",
+    "feed": "https://blog.neurips.cc/feed/"
+  },
+  {
+    "name": "One Trivial Observation at a Time",
+    "site": "https://www.pokutta.com/blog",
+    "feed": "https://www.pokutta.com/blog/feed/"
+  },
+  {
+    "name": "OpenAI Blog",
+    "site": "https://openai.com/blog",
+    "feed": "https://openai.com/blog/rss/"
+  },
+  {
+    "name": "Sebastian Raschka",
+    "site": "https://sebastianraschka.com",
+    "feed": "https://sebastianraschka.com/index.xml"
+  },
+  {
+    "name": "Theory of Computing Report",
+    "site": "https://theory.report",
+    "feed": "https://theory.report/feed.xml"
+  },
+  {
+    "name": "Adam Kosiorek",
+    "site": "https://akosiorek.github.io",
+    "feed": "https://akosiorek.github.io/feed.xml"
+  },
+  {
+    "name": "Adversarial Intelligence",
+    "site": "https://wouterkoolen.nl/blog",
+    "feed": "https://wouterkoolen.nl/blog/feed/"
+  },
+  {
+    "name": "Agustinus Kristiadi",
+    "site": "https://kristiadi.net",
+    "feed": "https://kristiadi.net/feed/"
+  },
+  {
+    "name": "Alex Shtoff",
+    "site": "https://alexshtf.github.io",
+    "feed": "https://alexshtf.github.io/feed.xml"
+  },
+  {
+    "name": "Amazon Science",
+    "site": "https://www.amazon.science/blog",
+    "feed": "https://www.amazon.science/blog.rss"
+  },
+  {
+    "name": "Andrej Karpathy Blog",
+    "site": "https://karpathy.github.io",
+    "feed": "https://karpathy.github.io/feed.xml"
+  },
+  {
+    "name": "AutoML",
+    "site": "https://www.automl.org",
+    "feed": "https://www.automl.org/feed/"
+  },
+  {
+    "name": "Bounded Rationality",
+    "site": "https://bkeng.com",
+    "feed": "https://bkeng.com/feed.xml"
+  },
+  {
+    "name": "Chris McCormick",
+    "site": "https://mccormickml.com",
+    "feed": "https://mccormickml.com/feed/"
+  },
+  {
+    "name": "colahs blog",
+    "site": "https://colah.github.io",
+    "feed": "https://colah.github.io/rss.xml"
+  },
+  {
+    "name": "Differential Privacy",
+    "site": "https://differentialprivacy.org",
+    "feed": "https://differentialprivacy.org/feed/"
+  },
+  {
+    "name": "Distill",
+    "site": "https://distill.pub",
+    "feed": "https://distill.pub/rss.xml"
+  },
+  {
+    "name": "Ethan N Epperly",
+    "site": "https://www.ethanepperly.com",
+    "feed": "https://www.ethanepperly.com/feed/"
+  },
+  {
+    "name": "inFERENCe",
+    "site": "https://inference.vc",
+    "feed": "https://inference.vc/feed/"
+  },
+  {
+    "name": "int8.io",
+    "site": "https://int8.io",
+    "feed": "https://int8.io/feed/"
+  },
+  {
+    "name": "Justin Domke",
+    "site": "https://jdomke.wordpress.com",
+    "feed": "https://jdomke.wordpress.com/feed/"
+  },
+  {
+    "name": "LilLog",
+    "site": "https://lilianweng.github.io/lil-log",
+    "feed": "https://lilianweng.github.io/lil-log/feed"
+  },
+  {
+    "name": "Machine Learning Theory",
+    "site": "https://hunch.net",
+    "feed": "https://hunch.net/?feed=rss2"
+  },
+  {
+    "name": "Machine Learning Research Blog",
+    "site": "https://francisbach.com",
+    "feed": "https://francisbach.com/feed/"
+  },
+  {
+    "name": "Machine Thoughts",
+    "site": "https://machine-thoughts.net",
+    "feed": "https://machine-thoughts.net/feed/"
+  },
+  {
+    "name": "Normal Deviate",
+    "site": "https://normaldeviate.wordpress.com",
+    "feed": "https://normaldeviate.wordpress.com/feed/"
+  },
+  {
+    "name": "Seitas Place",
+    "site": "https://blog.seita.io",
+    "feed": "https://blog.seita.io/feed"
+  },
+  {
+    "name": "Sorta Insightful",
+    "site": "https://alexirpan.com",
+    "feed": "https://alexirpan.com/rss.xml"
+  },
+  {
+    "name": "M Stories",
+    "site": "https://michael-bronstein.medium.com",
+    "feed": "https://michael-bronstein.medium.com/feed"
+  },
+  {
+    "name": "The Gradient",
+    "site": "https://thegradient.pub",
+    "feed": "https://thegradient.pub/rss"
+  },
+  {
+    "name": "The Information Structuralist",
+    "site": "https://infostructuralist.wordpress.com",
+    "feed": "https://infostructuralist.wordpress.com/feed/"
+  },
+  {
+    "name": "The Wild Week in AI",
+    "site": "https://www.wildml.com",
+    "feed": "https://www.wildml.com/feed/"
+  },
+  {
+    "name": "Tim van Erven",
+    "site": "https://www.timvanerven.nl/blog",
+    "feed": "https://www.timvanerven.nl/blog/feed/"
+  },
+  {
+    "name": "UCSD Machine Learning Group",
+    "site": "https://ucsdml.github.io",
+    "feed": "https://ucsdml.github.io/feed.xml"
+  },
+  {
+    "name": "Andrej Karpathy Personal Site",
+    "site": "https://karpathy.ai",
+    "feed": "https://karpathy.ai/feed.xml"
+  },
+  {
+    "name": "Andrej Karpathy Bear Blog",
+    "site": "https://karpathy.bearblog.dev",
+    "feed": "https://karpathy.bearblog.dev/feed/"
+  },
+  {
+    "name": "Connectionism",
+    "site": "https://thinkingmachines.ai/blog",
+    "feed": "https://thinkingmachines.ai/blog/rss.xml"
+  },
+  {
+    "name": "Ilya Sutskever",
+    "site": "https://www.cs.toronto.edu/~ilya/",
+    "feed": "https://www.cs.toronto.edu/~ilya/index.rdf"
+  },
+  {
+    "name": "Greg Brockman",
+    "site": "https://blog.gregbrockman.com",
+    "feed": "https://blog.gregbrockman.com/feed"
+  },
+  {
+    "name": "Sam Altman",
+    "site": "https://blog.samaltman.com",
+    "feed": "https://blog.samaltman.com/posts.atom"
+  },
+  {
+    "name": "Jan Leike",
+    "site": "https://jan.leike.name",
+    "feed": "https://jan.leike.name/feed/"
+  },
+  {
+    "name": "Dario Amodei",
+    "site": "https://darioamodei.com",
+    "feed": "https://darioamodei.com/feed/"
+  },
+  {
+    "name": "Redwood Research",
+    "site": "https://blog.redwoodresearch.org",
+    "feed": "https://blog.redwoodresearch.org/feed"
+  }
+]

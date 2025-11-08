@@ -3,146 +3,152 @@
  <img width=200px height=200px src="assets/logo.svg" alt="logo"></a>
 </p>
 
-<h3 align="center">Zotero-arXiv-Daily</h3>
+<h3 align="center">Blog Pusher</h3>
 
 <div align="center">
 
-  [![Status](https://img.shields.io/badge/status-active-success.svg)]()
-  ![Stars](https://img.shields.io/github/stars/TideDra/zotero-arxiv-daily?style=flat)
-  [![GitHub Issues](https://img.shields.io/github/issues/TideDra/zotero-arxiv-daily)](https://github.com/TideDra/zotero-arxiv-daily/issues)
-  [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/TideDra/zotero-arxiv-daily)](https://github.com/TideDra/zotero-arxiv-daily/pulls)
-  [![License](https://img.shields.io/github/license/TideDra/zotero-arxiv-daily)](/LICENSE)
-  [<img src="https://api.gitsponsors.com/api/badge/img?id=893025857" height="20">](https://api.gitsponsors.com/api/badge/link?p=PKMtRut1dWWuC1oFdJweyDSvJg454/GkdIx4IinvBblaX2AY4rQ7FYKAK1ZjApoiNhYEeduIEhfeZVIwoIVlvcwdJXVFD2nV2EE5j6lYXaT/RHrcsQbFl3aKe1F3hliP26OMayXOoZVDidl05wj+yg==)
+  <strong>Translate RSS/Atom feeds and push them to your inbox.</strong>
 
 </div>
 
 ---
 
-## Tao Feed Setup
-- `FEED_URL` defaults to `https://mathstodon.xyz/@tao.rss`. Override it to track a different Mastodon account.
-- `BLOG_FEED_URL` defaults to `https://terrytao.wordpress.com/feed/`, which includes posts such as Terry Tao’s “Mathematical exploration and discovery at scale”. Leave it blank if you only want the Mastodon feed.
-- The translator automatically chunks long posts so that every paragraph is translated without truncation while keeping LaTeX and other math notation intact.
+## Overview
+Blog Pusher watches a curated list of research and engineering blogs, translates every new post with Azure OpenAI, and emails the digest to you once per day. It started life as a Tao feed watcher, but now it operates as a general-purpose blog radar: drop any feed into `feeds/blogs.json`, deploy the workflow, and the system will keep your inbox synced with multilingual summaries.
 
-<p align="center"> Recommend new arxiv papers of your interest daily according to your Zotero library.
-    <br> 
-</p>
+## Features
+- Monitor dozens of RSS/Atom feeds defined in `feeds/blogs.json` plus any ad-hoc URLs you pass through `FEED_URL` / `BLOG_FEED_URL`.
+- Translate long-form content paragraph by paragraph while preserving math notation, LaTeX, links, and code blocks.
+- Collapse duplicate posts across feeds and send a single HTML digest with both the original body and the translated text.
+- Run as a zero-cost GitHub Actions workflow that emails you every day at 22:00 UTC (see `.github/workflows/main.yml`).
+- Configure everything through repository secrets/variables—no source edits required for day-to-day adjustments.
 
-> [!IMPORTANT]
-> Please keep an eye on this repo, and merge your forked repo in time when there is any update of this upstream, in order to enjoy new features and fix found bugs.
+## How It Works
+1. The `Blog Pusher` workflow installs dependencies with `uv` and runs `main.py`.
+2. `main.py` loads feed URLs from `feeds/blogs.json` (plus any overrides), fetches items from the last `WINDOW_HOURS`, and deduplicates them.
+3. Each post is translated with Azure OpenAI (`translation.py`) and rendered into an email via `construct_email.py`.
+4. The digest is sent through your SMTP server with the configured sender credentials.
 
-## 🧐 About <a name = "about"></a>
+## Deploy on GitHub
+1. **Fork this repository** (or keep working in your clone) and enable GitHub Actions.
+2. **Add repository secrets** (Settings → Secrets and variables → Actions → *New repository secret*):
 
-> Track new scientific researches of your interest by just forking (and staring) this repo!😊
+| Secret | Required | Description | Example |
+| :--- | :---: | :--- | :--- |
+| `AZURE_OPENAI_KEY` | ✅ | API key for your Azure OpenAI resource. | `abcd1234` |
+| `AZURE_OPENAI_ENDPOINT` | ✅ | Endpoint URL such as `https://xxx.openai.azure.com`. | `https://example.openai.azure.com` |
+| `AZURE_OPENAI_DEPLOYMENT` | ✅ | Chat/completions deployment name. | `gpt-4o-mini` |
+| `SMTP_SERVER` | ✅ | Hostname of the SMTP server that sends email. | `smtp.gmail.com` |
+| `SMTP_PORT` | ✅ | Port for the SMTP server (supports STARTTLS and SMTPS fallback). | `587` |
+| `SENDER` | ✅ | Email address used as the sender. | `bot@example.com` |
+| `SENDER_PASSWORD` | ✅ | SMTP password or app password for the sender. | `xxxx` |
+| `RECEIVER` | ✅ | Inbox that should receive the digest. | `you@example.com` |
 
-*Zotero-arXiv-Daily* finds arxiv papers that may attract you based on the context of your Zotero library, and then sends the result to your mailbox📮. It can be deployed as Github Action Workflow with **zero cost**, **no installation**, and **few configuration** of Github Action environment variables for daily **automatic** delivery.
+3. **Add repository variables** (Settings → Secrets and variables → Actions → *New repository variable*). Everything has a sane default, but overrides are handy:
 
-## ✨ Features
-- Totally free! All the calculation can be done in the Github Action runner locally within its quota (for public repo).
-- AI-generated TL;DR for you to quickly pick up target papers.
-- Affiliations of the paper are resolved and presented.
-- Links of PDF and code implementation (if any) presented in the e-mail.
-- List of papers sorted by relevance with your recent research interest.
-- Fast deployment via fork this repo and set environment variables in the Github Action Page.
-- Support LLM API for generating TL;DR of papers.
-- Ignore unwanted Zotero papers using gitignore-style pattern.
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `FEED_LIST` | `feeds/blogs.json` | Path (relative to repo root) to the JSON feed catalog. |
+| `FEED_URL` | *(blank)* | Extra feed URL to track in addition to the file. |
+| `BLOG_FEED_URL` | *(blank)* | Second legacy slot for quick experiments. |
+| `WINDOW_HOURS` | `24` | Look-back window when fetching posts. |
+| `MAX_POST_NUM` | `-1` | Limit on how many posts to send (`-1` keeps everything). |
+| `SEND_EMPTY` | `false` | Set to `true` to force an email even when no posts are new. |
+| `TARGET_LANGUAGE` | `Chinese (Traditional)` | Translation language. |
+| `EMAIL_SUBJECT_PREFIX` | `Blog Pusher Digest` | Prefix for the email subject line. |
+| `AZURE_OPENAI_API_VERSION` | `2024-02-01` | API version for the Azure OpenAI client. |
 
-## 📷 Screenshot
-![screenshot](./assets/screenshot.png)
+4. **Trigger the workflow** from the Actions tab or wait for the nightly schedule (22:00 UTC). Check the run logs for translation details and SMTP delivery results.
 
-## 🚀 Usage
-### Quick Start
-1. Fork (and star😘) this repo.
-![fork](./assets/fork.png)
-
-2. Set Github Action environment variables.
-![secrets](./assets/secrets.png)
-
-Below are all the secrets you need to set. They are invisible to anyone including you once they are set, for security.
-
-| Key | Required | Type |Description | Example |
-| :--- | :---: | :---  | :---  | :--- |
-| ZOTERO_ID | ✅ | str  | User ID of your Zotero account. **User ID is not your username, but a sequence of numbers**Get your ID from [here](https://www.zotero.org/settings/security). You can find it at the position shown in this [screenshot](https://github.com/TideDra/zotero-arxiv-daily/blob/main/assets/userid.png). | 12345678  |
-| ZOTERO_KEY | ✅ | str  | An Zotero API key with read access. Get a key from [here](https://www.zotero.org/settings/security).  | AB5tZ877P2j7Sm2Mragq041H   |
-| ARXIV_QUERY | ✅ | str  | The categories of target arxiv papers. Use `+` to concatenate multiple categories. The example retrieves papers about AI, CV, NLP, ML. Find the abbr of your research area from [here](https://arxiv.org/category_taxonomy).  | cs.AI+cs.CV+cs.LG+cs.CL |
-| SMTP_SERVER | ✅ | str | The SMTP server that sends the email. I recommend to utilize a seldom-used email for this. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server| smtp.qq.com |
-| SMTP_PORT | ✅ | int | The port of SMTP server. | 465 |
-| SENDER | ✅ | str | The email account of the SMTP server that sends you email. | abc@qq.com |
-| SENDER_PASSWORD | ✅ | str | The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this.   | abcdefghijklmn |
-| RECEIVER | ✅ | str | The e-mail address that receives the paper list. | abc@outlook.com |
-| MAX_PAPER_NUM | | int | The maximum number of the papers presented in the email. This value directly affects the execution time of this workflow, because it takes about 70s to generate TL;DR for one paper. `-1` means to present all the papers retrieved. | 50 |
-| SEND_EMPTY | | bool | Whether to send an empty email even if no new papers today. | False |
-| USE_LLM_API | | bool | Whether to use the LLM API in the cloud or to use local LLM. If set to `1`, the API is used. Else if set to `0`, the workflow will download and deploy an open-source LLM. Default to `0`. | 0 |
-| OPENAI_API_KEY | | str | API Key when using the API to access LLMs. You can get FREE API for using advanced open source LLMs in [SiliconFlow](https://cloud.siliconflow.cn/i/b3XhBRAm). | sk-xxx |
-| OPENAI_API_BASE | | str | API URL when using the API to access LLMs. If not filled in, the default is the OpenAI URL. | https://api.siliconflow.cn/v1 |
-| MODEL_NAME | | str | Model name when using the API to access LLMs. If not filled in, the default is gpt-4o. Qwen/Qwen2.5-7B-Instruct is recommended when using [SiliconFlow](https://cloud.siliconflow.cn/i/b3XhBRAm). | Qwen/Qwen2.5-7B-Instruct |
-
-There are also some public variables (Repository Variables) you can set, which are easy to edit.
-![vars](./assets/repo_var.png)
-
-| Key | Required | Type | Description | Example |
-| :--- | :---  | :---  | :--- | :--- |
-| ZOTERO_IGNORE | | str | Gitignore-style patterns marking the Zotero collections that should be ignored. One rule one line. Learn more about [gitignore](https://git-scm.com/docs/gitignore). | AI Agent/<br>**/survey<br>!LLM/survey |
-| REPOSITORY | | str | The repository that provides the workflow. If set, the value can only be `TideDra/zotero-arxiv-daily`, in which case, the workflow always pulls the latest code from this upstream repo, so that you don't need to sync your forked repo upon each update, unless the workflow file is changed. | `TideDra/zotero-arxiv-daily` |
-| REF | | str | The specified ref of the workflow to run. Only valid when REPOSITORY is set to `TideDra/zotero-arxiv-daily`. Currently supported values include `main` for stable version, `dev` for development version which has new features and potential bugs. | `main` |
-| LANGUAGE | | str | The language of TLDR; Its value is directly embeded in the prompt passed to LLM | Chinese |
-
-That's all! Now you can test the workflow by manually triggering it:
-![test](./assets/test.png)
-
-> [!NOTE]
-> The Test-Workflow Action is the debug version of the main workflow (Send-emails-daily), which always retrieve 5 arxiv papers regardless of the date. While the main workflow will be automatically triggered everyday and retrieve new papers released yesterday. There is no new arxiv paper at weekends and holiday, in which case you may see "No new papers found" in the log of main workflow.
-
-Then check the log and the receiver email after it finishes.
-
-By default, the main workflow runs on 22:00 UTC everyday. You can change this time by editting the workflow config `.github/workflows/main.yml`.
-
-### Local Running
-Supported by [uv](https://github.com/astral-sh/uv), this workflow can easily run on your local device if uv is installed:
+## Local Development
 ```bash
-# set all the environment variables
-# export ZOTERO_ID=xxxx
-# ...
-cd zotero-arxiv-daily
-uv run main.py
+uv sync
+export AZURE_OPENAI_KEY=...
+export AZURE_OPENAI_ENDPOINT=...
+# ...export the remaining SMTP + workflow variables...
+uv run main.py --debug
 ```
-> [!IMPORTANT]
-> The workflow will download and run an LLM (Qwen2.5-3B, the file size of which is about 3G). Make sure your network and hardware can handle it.
+The script reads either CLI flags or environment variables. Use `--feed_list` to point at a different JSON file when testing.
 
-> [!WARNING]
-> Other package managers like pip or conda are not tested. You can still use them to install this workflow because there is a `pyproject.toml`, while potential problems exist.
+## Feed Catalog
+All monitored sources live in `feeds/blogs.json`. Each entry accepts either a raw string URL or an object with `feed`/`url` fields (plus optional metadata). Update the file and commit it to change the watch list; no code changes are required. The default catalog mirrors the table below.
 
-## 🚀 Sync with the latest version
-This project is in active development. You can subscribe this repo via `Watch` so that you can be notified once we publish new release.
+### 📚 Blog Radar
+| 名稱 | 目的/重點 | 連結 |
+| --- | --- | --- |
+| What’s new — Terence Tao’s blog | 研究更新、公開問題、講義、職涯 | https://terrytao.wordpress.com |
+| Gowers’s Weblog | 數學討論、社群協作 | https://gowers.wordpress.com |
+| Math ∩ Programming | 數學×程式、演算法教程 | https://jeremykun.com |
+| Windows on Theory | TCS 社群、AI/密碼學/會議 | https://windowsontheory.org |
+| Computational Complexity Blog | 計算複雜度與 CS 趣談 | https://blog.computationalcomplexity.org |
+| Gödel’s Lost Letter and P=NP | 理論計算學個人觀點 | https://rjlipton.com |
+| Shtetl‑Optimized | 量子計算、科學政策與科普 | https://scottaaronson.blog |
+| Off the Convex Path | 非凸/凸優化、學習理論 | https://offconvex.org |
+| Parameter‑free Learning and Optimization | 免調參的在線/隨機優化 | https://parameterfree.com |
+| BAIR Blog | BAIR 研究更新與觀點 | https://bair.berkeley.edu/blog |
+| John D. Cook Blog (The Endeavour) | 應數、統計、計算隨筆 | https://www.johndcook.com/blog |
+| Stevey’s Blog Rants | 軟體工程、語言、平台、職涯 | https://steve-yegge.blogspot.com |
+| Brendan Gregg’s Blog | Linux 效能、eBPF、系統設計 | https://www.brendangregg.com/blog |
+| Schneier on Security | 資安、密碼學、政策、隱私 | https://www.schneier.com |
+| Ken Shirriff’s blog | 電腦歷史、IC 逆向/修復 | https://www.righto.com |
+| Bartosz Milewski’s Programming Cafe | 類別論、Haskell、併發、C++ | https://bartoszmilewski.com |
+| Paul Graham Essays | 創業、編程、思考 | https://paulgraham.com |
+| Rasmus’ Toys Blog | 系統/DIY、開源筆記 | https://toys.lerdorf.com |
+| Simon Willison’s Weblog | 資料出版、Python、LLM/工具 | https://simonwillison.net |
+| Rands in Repose | 工程管理、文化、職涯 | https://randsinrepose.com |
+| Dan Luu Blog | 體系結構、延遲、可靠性 | https://danluu.com |
+| Fabien Sanglard’s Website | 遊戲引擎解讀、硬體逆向 | https://fabiensanglard.net |
+| arg min | 優化/ML 思想與評論 | https://argmin.substack.com |
+| DeepMind Blog | AI 研究突破與影響 | https://deepmind.google/blog |
+| ML@CMU — Machine Learning Blog | CMU ML 研究更新、科普 | https://blog.ml.cmu.edu |
+| NeurIPS Blog | 會議新聞、社群議題 | https://blog.neurips.cc |
+| One trivial observation at a time | 數學、最佳化、ML 隨筆 | https://www.pokutta.com/blog/ |
+| OpenAI Blog/News | 研究、產品、政策 | https://openai.com/blog |
+| Sebastian Raschka | 深度學習實作與教學 | https://sebastianraschka.com |
+| Theory of Computing Report | TCS 博客/論文匯總 | https://theory.report |
+| Adam Kosiorek Blog | AI、生物資訊筆記 | https://akosiorek.github.io |
+| Adversarial Intelligence | 在線學習、數學筆記 | https://wouterkoolen.nl/blog/ |
+| Agustinus Kristiadi | ML 理論、不確定性 | https://kristiadi.net |
+| Alex Shtoff Blog | 最優化、推薦、軟工 | https://alexshtf.github.io |
+| Amazon Science | 多領域研究與應用 | https://www.amazon.science/blog |
+| Andrej Karpathy Blog | 深度學習長文、隨想 | https://karpathy.github.io |
+| AutoML | 自動機器學習資源 | https://www.automl.org |
+| Bounded Rationality | 技術雜談 | https://bkeng.com |
+| Chris McCormick | NLP 教程與實作 | https://mccormickml.com |
+| colah’s blog | 深度學習解釋性 | https://colah.github.io |
+| Differential Privacy | 差分隱私資源 | https://differentialprivacy.org |
+| Distill | 互動式 ML 期刊 | https://distill.pub |
+| Ethan N. Epperly | 科學計算、ML、量子 | https://www.ethanepperly.com |
+| inFERENCe | ML 與統計評論 | https://inference.vc |
+| int8.io | ML 工程實務 | https://int8.io |
+| Justin Domke’s Weblog | 概率機器學習 | https://jdomke.wordpress.com |
+| Lil’Log — Lilian Weng | 深度學習/強化學習筆記 | https://lilianweng.github.io/lil-log |
+| Machine Learning (Theory) — hunch.net | ML 與理論討論 | https://hunch.net |
+| Machine Learning Research Blog — Francis Bach | 優化與 ML 理論 | https://francisbach.com |
+| Machine Thoughts — David McAllester | AI 思想與哲學 | https://machine-thoughts.net |
+| Normal Deviate — Larry Wasserman | 統計與 ML 想法 | https://normaldeviate.wordpress.com |
+| Seita’s Place — Daniel Seita | 機器人/CS 研究筆記 | https://blog.seita.io |
+| Sorta Insightful — Alex Irpan | AI 安全與 ML 隨筆 | https://alexirpan.com |
+| M Stories — Michael Bronstein | 圖學習、AI 研究隨筆 | https://michael-bronstein.medium.com |
+| ∇ The Gradient | AI 評論、訪談、通識 | https://thegradient.pub |
+| The Information Structuralist — M. Raginsky | 資訊論、統計、控制 | https://infostructuralist.wordpress.com |
+| The Wild Week in AI (WildML) | 每週 AI 新聞 | https://www.wildml.com |
+| Tim van Erven | ML 理論、PAC‑Bayes | https://www.timvanerven.nl/blog/ |
+| UCSD Machine Learning Group | UCSD ML 研究更新 | https://ucsdml.github.io |
+| Andrej Karpathy — 個人網站 | 深度學習、教育專案 | https://karpathy.ai |
+| Andrej Karpathy — Bear Blog | 短篇 AI 筆記 | https://karpathy.bearblog.dev |
+| Connectionism — Thinking Machines Lab | 研究/產品、共享科學 | https://thinkingmachines.ai/blog |
+| Ilya Sutskever — Home Page | 研究出版與示範 | https://www.cs.toronto.edu/~ilya/ |
+| Greg Brockman — Blog | AI 創業、工程隨筆 | https://blog.gregbrockman.com |
+| Sam Altman — Blog | AI 政策、產品、觀點 | https://blog.samaltman.com |
+| Jan Leike | AI 對齊與安全 | https://jan.leike.name |
+| Dario Amodei | AI 風險、長文 | https://darioamodei.com |
+| Redwood Research Blog | AI 安全與風險研究 | https://blog.redwoodresearch.org |
 
-![Watch](./assets/subscribe_release.png)
+## License
+Distributed under the AGPLv3 license. See `LICENSE` for details.
 
-
-## 📖 How it works
-*Zotero-arXiv-Daily* firstly retrieves all the papers in your Zotero library and all the papers released in the previous day, via corresponding API. Then it calculates the embedding of each paper's abstract via an embedding model. The score of a paper is its weighted average similarity over all your Zotero papers (newer paper added to the library has higher weight).
-
-The TLDR of each paper is generated by a lightweight LLM (Qwen2.5-3b-instruct-q4_k_m), given its title, abstract, introduction, and conclusion (if any). The introduction and conclusion are extracted from the source latex file of the paper.
-
-## 📌 Limitations
-- The recommendation algorithm is very simple, it may not accurately reflect your interest. Welcome better ideas for improving the algorithm!
-- This workflow deploys an LLM on the cpu of Github Action runner, and it takes about 70s to generate a TLDR for one paper. High `MAX_PAPER_NUM` can lead the execution time exceed the limitation of Github Action runner (6h per execution for public repo, and 2000 mins per month for private repo). Commonly, the quota given to public repo is definitely enough for individual use. If you have special requirements, you can deploy the workflow in your own server, or use a self-hosted Github Action runner, or pay for the exceeded execution time.
-
-## 👯‍♂️ Contribution
-Any issue and PR are welcomed! But remember that **each PR should merge to the `dev` branch**.
-
-## 📃 License
-Distributed under the AGPLv3 License. See `LICENSE` for detail.
-
-## ❤️ Acknowledgement
-- [pyzotero](https://github.com/urschrei/pyzotero)
-- [arxiv](https://github.com/lukasschwab/arxiv.py)
-- [sentence_transformers](https://github.com/UKPLab/sentence-transformers)
-- [llama-cpp-python](https://github.com/abetlen/llama-cpp-python)
-
-## ☕ Buy Me A Coffee
-If you find this project helpful, welcome to sponsor me via WeChat or via [ko-fi](https://ko-fi.com/tidedra).
-![wechat_qr](assets/wechat_sponsor.JPG)
-
-
-## 🌟 Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=TideDra/zotero-arxiv-daily&type=Date)](https://star-history.com/#TideDra/zotero-arxiv-daily&Date)
+## Credits
+- RSS parsing: [feedparser](https://github.com/kurtmckee/feedparser)
+- HTML parsing: [Beautiful Soup](https://www.crummy.com/software/BeautifulSoup/)
+- Translation: [Azure OpenAI](https://learn.microsoft.com/azure/ai-services/openai/)

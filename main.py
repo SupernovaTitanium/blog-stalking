@@ -1,19 +1,23 @@
 import argparse
 import datetime as dt
+import json
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from loguru import logger
 
 from construct_email import render_email, send_email
-from tao_feed import fetch_recent_posts
+from feeds import FeedPost, fetch_recent_posts
 from translation import AzureTranslator
 
 load_dotenv(override=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-parser = argparse.ArgumentParser(description="Send Tao blog updates via email")
+parser = argparse.ArgumentParser(
+    description="Send translated blog updates via email"
+)
 
 
 def add_argument(*args, **kwargs):
@@ -31,18 +35,56 @@ def add_argument(*args, **kwargs):
     parser.set_defaults(**{dest: env_value})
 
 
+def load_feed_urls_from_file(path: str) -> list[str]:
+    feed_path = Path(path).expanduser()
+    if not feed_path.is_absolute():
+        feed_path = Path(__file__).resolve().parent / feed_path
+    if not feed_path.exists():
+        raise FileNotFoundError(f"Feed list {feed_path} does not exist")
+
+    try:
+        data = json.loads(feed_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Unable to parse feed list {feed_path}: {exc}") from exc
+
+    if isinstance(data, dict):
+        entries = data.get("feeds", [])
+    elif isinstance(data, list):
+        entries = data
+    else:
+        raise ValueError(f"Unsupported feed list structure in {feed_path}")
+
+    urls: list[str] = []
+    for entry in entries:
+        if isinstance(entry, str):
+            urls.append(entry.strip())
+            continue
+        if not isinstance(entry, dict):
+            continue
+        url = (entry.get("feed") or entry.get("url") or "").strip()
+        if url:
+            urls.append(url)
+    return [url for url in urls if url]
+
+
 if __name__ == "__main__":
     add_argument(
         "--feed_url",
         type=str,
-        default="https://mathstodon.xyz/@tao.rss",
-        help="Mastodon RSS feed URL for Tao.",
+        default="",
+        help="Optional single feed URL to include in addition to the feed list.",
     )
     add_argument(
         "--blog_feed_url",
         type=str,
-        default="https://terrytao.wordpress.com/feed/",
-        help="WordPress RSS feed URL for Tao's blog.",
+        default="",
+        help="Optional second feed URL (legacy compatibility).",
+    )
+    add_argument(
+        "--feed_list",
+        type=str,
+        default="feeds/blogs.json",
+        help="Path to a JSON file containing additional feed entries.",
     )
     add_argument(
         "--window_hours",
@@ -53,8 +95,8 @@ if __name__ == "__main__":
     add_argument(
         "--max_post_num",
         type=int,
-        default=10,
-        help="Maximum number of posts per digest; -1 keeps all within the window.",
+        default=-1,
+        help="Maximum number of posts per digest; -1 keeps everything within the window.",
     )
     add_argument(
         "--send_empty",
@@ -94,7 +136,7 @@ if __name__ == "__main__":
     add_argument(
         "--email_subject_prefix",
         type=str,
-        default="Tao Daily Digest",
+        default="Blog Pusher Digest",
         help="Subject prefix for outgoing email.",
     )
     parser.add_argument("--debug", action="store_true", help="Enable verbose logging.")
@@ -121,16 +163,41 @@ if __name__ == "__main__":
         )
 
     limit = None if args.max_post_num == -1 else args.max_post_num
-    feed_urls = []
-    for url in (args.feed_url, args.blog_feed_url):
-        if url and url not in feed_urls:
-            feed_urls.append(url)
+    feed_urls: list[str] = []
+    seen_urls: set[str] = set()
 
-    logger.info(f"Fetching Tao posts from {len(feed_urls)} feed(s)...")
-    posts_by_id = {}
+    def append_url(url: str | None):
+        if not url:
+            return
+        if url in seen_urls:
+            return
+        seen_urls.add(url)
+        feed_urls.append(url)
+
+    if args.feed_list:
+        try:
+            for url in load_feed_urls_from_file(args.feed_list):
+                append_url(url)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to load feed list from {args.feed_list}") from exc
+
+    for url in (args.feed_url, args.blog_feed_url):
+        append_url(url)
+
+    if not feed_urls:
+        raise ValueError(
+            "No feed URLs loaded. Provide a feed list or set FEED_URL/BLOG_FEED_URL."
+        )
+
+    logger.info(f"Fetching posts from {len(feed_urls)} feed(s)...")
+    posts_by_id: dict[str, FeedPost] = {}
     for url in feed_urls:
-        for post in fetch_recent_posts(url, args.window_hours):
-            posts_by_id[post.id] = post
+        try:
+            for post in fetch_recent_posts(url, args.window_hours):
+                key = f"{post.source}:{post.id}"
+                posts_by_id[key] = post
+        except Exception as exc:
+            logger.warning(f"Skipping feed {url}: {exc}")
 
     posts = sorted(posts_by_id.values(), key=lambda p: p.published)
     if limit is not None and limit > 0:

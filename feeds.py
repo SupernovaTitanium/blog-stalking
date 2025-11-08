@@ -11,13 +11,14 @@ from loguru import logger
 
 
 @dataclass
-class TaoPost:
+class FeedPost:
     id: str
     url: str
     title: str
     published: datetime
     content_html: str
     content_text: str
+    source: str
     translation: Optional[str] = None
 
 
@@ -31,14 +32,15 @@ def fetch_recent_posts(
     feed_url: str,
     window_hours: int = 24,
     limit: Optional[int] = None,
-) -> List[TaoPost]:
+) -> List[FeedPost]:
     logger.debug(f"Loading feed from {feed_url}")
     feed = feedparser.parse(feed_url)
     if feed.bozo:
         raise RuntimeError(f"Failed to parse feed {feed_url}: {feed.bozo_exception}")
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
-    posts: List[TaoPost] = []
+    posts: List[FeedPost] = []
+    feed_title = feed.feed.get("title") or feed.feed.get("link") or feed_url
     for entry in feed.entries:
         published = _parse_datetime(getattr(entry, "published_parsed", None))
         if published < cutoff:
@@ -58,14 +60,26 @@ def fetch_recent_posts(
         text = soup.get_text("\n").strip()
         title = (getattr(entry, "title", "") or text or "New post").strip()
 
+        source = feed_title
+        source_entry = entry.get("source")
+        if isinstance(source_entry, dict):
+            source = (
+                source_entry.get("title")
+                or source_entry.get("href")
+                or feed_title
+            )
+        elif isinstance(source_entry, str):
+            source = source_entry or feed_title
+
         posts.append(
-            TaoPost(
+            FeedPost(
                 id=getattr(entry, "id", link),
                 url=link,
                 title=title,
                 published=published,
                 content_html=raw_html or f"<p>{text}</p>",
                 content_text=text or title,
+                source=source,
             )
         )
 
