@@ -17,18 +17,38 @@ jobs:
         with:
           version: '0.5.4'
 
+      - name: Compute October window
+        id: october-window
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+
+          now = datetime.now(timezone.utc)
+          october = datetime(now.year, 10, 1, tzinfo=timezone.utc)
+          if now < october:
+              october = datetime(now.year - 1, 10, 1, tzinfo=timezone.utc)
+
+          # Add a small buffer (24h) to avoid off-by-one truncation.
+          hours = int((now - october).total_seconds() // 3600) + 24
+
+          with open("${GITHUB_OUTPUT}", "a", encoding="utf-8") as fh:
+              fh.write(f"hours={hours}\n")
+          PY
+
       - name: Run script
         env:
-          FEED_URL: ${{ vars.FEED_URL }}
-          WINDOW_HOURS: ${{ vars.WINDOW_HOURS }}
-          MAX_POST_NUM: ${{ vars.MAX_POST_NUM }}
-          SEND_EMPTY: ${{ vars.SEND_EMPTY }}
-          TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE }}
-          EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX }}
+          FEED_LIST: ${{ vars.FEED_LIST || 'feeds/blogs.json' }}
+          FEED_URL: ${{ vars.FEED_URL || '' }}
+          BLOG_FEED_URL: ${{ vars.BLOG_FEED_URL || '' }}
+          WINDOW_HOURS: ${{ vars.WINDOW_HOURS || steps.october-window.outputs.hours }}
+          MAX_POST_NUM: ${{ vars.MAX_POST_NUM || '-1' }}
+          SEND_EMPTY: ${{ vars.SEND_EMPTY || 'false' }}
+          TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE || 'Chinese (Traditional)' }}
+          EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX || 'Blog Pusher Digest' }}
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
-          AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION || '2024-02-01' }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SENDER: ${{ secrets.SENDER }}
