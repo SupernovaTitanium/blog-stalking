@@ -89,17 +89,21 @@ class AzureTranslator:
             return f"[Translation error: {exc}]"
 
     def _handle_content_filter(self, chunk: str, depth: int, reason: str) -> str:
-        logger.warning(
+        can_retry = depth < self._max_filter_depth and len(chunk) > 200
+        parts: List[str] = []
+        if can_retry:
+            parts = self._split_for_filter(chunk)
+            can_retry = len(parts) > 1
+
+        log_fn = logger.info if can_retry else logger.warning
+        log_fn(
             "Content filter blocked translation (depth={}, chars={}): {}",
             depth,
             len(chunk),
             reason,
         )
-        if depth >= self._max_filter_depth or len(chunk) <= 200:
-            return "[Translation skipped: blocked by Azure content filter]"
 
-        parts = self._split_for_filter(chunk)
-        if len(parts) <= 1:
+        if not can_retry:
             return "[Translation skipped: blocked by Azure content filter]"
 
         translations = [
