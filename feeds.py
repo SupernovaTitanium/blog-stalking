@@ -19,6 +19,14 @@ class FeedPost:
     content_html: str
     content_text: str
     source: str
+    feed_url: str
+    source_name: Optional[str] = None
+    source_owner: Optional[str] = None
+    source_category: Optional[str] = None
+    source_site: Optional[str] = None
+    source_description: Optional[str] = None
+    source_tags: Optional[List[str]] = None
+    source_accent: Optional[str] = None
     translation: Optional[str] = None
 
 
@@ -36,7 +44,12 @@ def fetch_recent_posts(
     logger.debug(f"Loading feed from {feed_url}")
     feed = feedparser.parse(feed_url)
     if feed.bozo:
-        raise RuntimeError(f"Failed to parse feed {feed_url}: {feed.bozo_exception}")
+        if getattr(feed, "entries", None):
+            logger.warning(
+                f"Feed {feed_url} reported parsing issues ({feed.bozo_exception}); continuing."
+            )
+        else:
+            raise RuntimeError(f"Failed to parse feed {feed_url}: {feed.bozo_exception}")
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
     posts: List[FeedPost] = []
@@ -80,6 +93,7 @@ def fetch_recent_posts(
                 content_html=raw_html or f"<p>{text}</p>",
                 content_text=text or title,
                 source=source,
+                feed_url=feed_url,
             )
         )
 

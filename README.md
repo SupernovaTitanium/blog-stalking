@@ -20,6 +20,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 - Monitor dozens of RSS/Atom feeds defined in `feeds/blogs.json` plus any ad-hoc URLs you pass through `FEED_URL` / `BLOG_FEED_URL`.
 - Translate long-form content paragraph by paragraph while preserving math notation, LaTeX, links, and code blocks.
 - Collapse duplicate posts across feeds and send a single HTML digest with both the original body and the translated text.
+- Highlight each source with a color-coded badge and optional author / organization metadata pulled from the feed catalog so you can tell at a glance who wrote what.
 - Run as a zero-cost GitHub Actions workflow that emails you every day at 22:00 UTC (see `.github/workflows/main.yml`).
 - Configure everything through repository secrets/variables—no source edits required for day-to-day adjustments.
 
@@ -144,6 +145,30 @@ All monitored sources live in `feeds/blogs.json`. Each entry accepts either a ra
 | Jan Leike | AI 對齊與安全 | https://jan.leike.name |
 | Dario Amodei | AI 風險、長文 | https://darioamodei.com |
 | Redwood Research Blog | AI 安全與風險研究 | https://blog.redwoodresearch.org |
+
+#### Source metadata
+Each entry in `feeds/blogs.json` can optionally specify additional keys that are rendered inside the email digest:
+
+```jsonc
+{
+  "name": "Shtetl-Optimized",
+  "site": "https://scottaaronson.blog",
+  "feed": "https://scottaaronson.blog/?feed=rss2",
+  "owner": "Scott Aaronson",
+  "category": "Individual researcher",
+  "description": "Quantum computing and complexity theory essays from Scott Aaronson.",
+  "tags": ["quantum", "complexity"],
+  "accent_color": "#4f46e5"
+}
+```
+
+- `owner`: Person, lab, or organization behind the feed.
+- `category`: Short label such as “Individual researcher”, “Research lab”, etc.
+- `description`: One-line summary that appears under the source badge.
+- `tags`: Array of short keywords rendered as gray chips for quick scanning.
+- `accent_color`: Optional hex/hsl color; if omitted we generate one deterministically per source.
+
+All fields are optional—the digest falls back to the feed title plus the site’s domain when metadata is missing.
 
 ## License
 Distributed under the AGPLv3 license. See `LICENSE` for details.

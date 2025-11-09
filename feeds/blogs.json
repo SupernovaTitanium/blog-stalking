@@ -32,12 +32,20 @@
   {
     "name": "Shtetl-Optimized",
     "site": "https://scottaaronson.blog",
-    "feed": "https://scottaaronson.blog/?feed=rss2"
+    "feed": "https://scottaaronson.blog/?feed=rss2",
+    "owner": "Scott Aaronson",
+    "category": "Individual researcher",
+    "description": "Quantum computing and complexity theory essays from Scott Aaronson.",
+    "tags": ["quantum", "complexity", "theory"]
   },
   {
     "name": "Off the Convex Path",
     "site": "https://offconvex.org",
-    "feed": "https://offconvex.org/feed/"
+    "feed": "https://www.offconvex.org/feed.xml",
+    "owner": "Moritz Hardt & collaborators",
+    "category": "Research collective",
+    "description": "Long-form notes on optimization and theoretical machine learning.",
+    "tags": ["optimization", "theory", "ml"]
   },
   {
     "name": "Parameter-free Learning and Optimization",
@@ -47,7 +55,11 @@
   {
     "name": "BAIR Blog",
     "site": "https://bair.berkeley.edu/blog",
-    "feed": "https://bair.berkeley.edu/blog/feed/"
+    "feed": "https://bair.berkeley.edu/blog/feed.xml",
+    "owner": "Berkeley Artificial Intelligence Research Lab",
+    "category": "Academic lab",
+    "description": "Research highlights and perspectives from UC Berkeley's BAIR lab.",
+    "tags": ["ai", "research", "berkeley"]
   },
   {
     "name": "John D Cook Blog",
@@ -72,7 +84,11 @@
   {
     "name": "Ken Shirriff",
     "site": "https://www.righto.com",
-    "feed": "https://www.righto.com/feeds/posts/default"
+    "feed": "http://www.righto.com/feeds/posts/default?alt=rss",
+    "owner": "Ken Shirriff",
+    "category": "Individual engineer",
+    "description": "Deep dives into retrocomputing, hardware reverse engineering, and cryptography.",
+    "tags": ["hardware", "reverse engineering", "history"]
   },
   {
     "name": "Bartosz Milewskis Programming Cafe",
@@ -82,17 +98,20 @@
   {
     "name": "Paul Graham Essays",
     "site": "https://paulgraham.com",
-    "feed": "http://www.aaronsw.com/pg/pg.rss"
-  },
-  {
-    "name": "Rasmus Toys Blog",
-    "site": "https://toys.lerdorf.com",
-    "feed": "https://toys.lerdorf.com/rss"
+    "feed": "https://filipesilva.github.io/paulgraham-rss/feed.rss",
+    "owner": "Paul Graham",
+    "category": "Individual essayist",
+    "description": "Classic essays on startups, programming, and independent thinking.",
+    "tags": ["startups", "essays", "programming"]
   },
   {
     "name": "Simon Willison",
     "site": "https://simonwillison.net",
-    "feed": "https://simonwillison.net/atom/"
+    "feed": "https://simonwillison.net/atom/everything/",
+    "owner": "Simon Willison",
+    "category": "Individual engineer",
+    "description": "Daily links and essays on data journalism, tooling, and open source.",
+    "tags": ["data", "open source", "notes"]
   },
   {
     "name": "Rands in Repose",
@@ -117,7 +136,11 @@
   {
     "name": "DeepMind Blog",
     "site": "https://deepmind.google/blog",
-    "feed": "https://deepmind.google/blog/feed"
+    "feed": "https://blog.google/technology/google-deepmind/rss/",
+    "owner": "Google DeepMind",
+    "category": "Industry research lab",
+    "description": "Research announcements and perspectives from Google DeepMind.",
+    "tags": ["ai", "research", "deepmind"]
   },
   {
     "name": "ML@CMU",
@@ -132,22 +155,38 @@
   {
     "name": "One Trivial Observation at a Time",
     "site": "https://www.pokutta.com/blog",
-    "feed": "https://www.pokutta.com/blog/feed/"
+    "feed": "https://www.pokutta.com/blog/feed.xml",
+    "owner": "Sebastian Pokutta",
+    "category": "Individual researcher",
+    "description": "Optimization theory, game theory, and ML insights from Sebastian Pokutta.",
+    "tags": ["optimization", "game theory"]
   },
   {
     "name": "OpenAI Blog",
     "site": "https://openai.com/blog",
-    "feed": "https://openai.com/blog/rss/"
+    "feed": "https://openai.com/news/rss",
+    "owner": "OpenAI",
+    "category": "Industry research lab",
+    "description": "Product announcements, research updates, and safety notes from OpenAI.",
+    "tags": ["ai", "openai", "research"]
   },
   {
     "name": "Sebastian Raschka",
     "site": "https://sebastianraschka.com",
-    "feed": "https://sebastianraschka.com/index.xml"
+    "feed": "https://sebastianraschka.com/rss_feed.xml",
+    "owner": "Sebastian Raschka",
+    "category": "Individual researcher",
+    "description": "Deep learning and MLOps tutorials by Sebastian Raschka.",
+    "tags": ["deep learning", "tutorials"]
   },
   {
     "name": "Theory of Computing Report",
     "site": "https://theory.report",
-    "feed": "https://theory.report/feed.xml"
+    "feed": "https://theory.report/rss20.xml",
+    "owner": "Theory of Computing Report editors",
+    "category": "Community newsletter",
+    "description": "Job postings and event updates for the TCS community.",
+    "tags": ["tcs", "jobs", "community"]
   },
   {
     "name": "Adam Kosiorek",
@@ -156,8 +195,12 @@
   },
   {
     "name": "Adversarial Intelligence",
-    "site": "https://wouterkoolen.nl/blog",
-    "feed": "https://wouterkoolen.nl/blog/feed/"
+    "site": "https://blog.wouterkoolen.info",
+    "feed": "https://blog.wouterkoolen.info/feed.xml",
+    "owner": "Wouter Koolen",
+    "category": "Individual researcher",
+    "description": "Online learning and information-theoretic notes by Wouter Koolen.",
+    "tags": ["online learning", "theory"]
   },
   {
     "name": "Agustinus Kristiadi",
@@ -172,7 +215,11 @@
   {
     "name": "Amazon Science",
     "site": "https://www.amazon.science/blog",
-    "feed": "https://www.amazon.science/blog.rss"
+    "feed": "https://www.amazon.science/index.rss",
+    "owner": "Amazon Science",
+    "category": "Industry research lab",
+    "description": "Applied science stories and publications from Amazon researchers.",
+    "tags": ["industry", "research", "amazon"]
   },
   {
     "name": "Andrej Karpathy Blog",
@@ -186,8 +233,12 @@
   },
   {
     "name": "Bounded Rationality",
-    "site": "https://bkeng.com",
-    "feed": "https://bkeng.com/feed.xml"
+    "site": "https://bjlkeng.github.io",
+    "feed": "https://bjlkeng.github.io/rss.xml",
+    "owner": "Brian Keng",
+    "category": "Individual researcher",
+    "description": "Machine learning and information theory notes from Brian Keng.",
+    "tags": ["ml", "information theory"]
   },
   {
     "name": "Chris McCormick",
@@ -202,7 +253,11 @@
   {
     "name": "Differential Privacy",
     "site": "https://differentialprivacy.org",
-    "feed": "https://differentialprivacy.org/feed/"
+    "feed": "https://differentialprivacy.org/feed.xml",
+    "owner": "Differential Privacy Community",
+    "category": "Community blog",
+    "description": "Announcements and explainers from the differential privacy community.",
+    "tags": ["privacy", "community"]
   },
   {
     "name": "Distill",
@@ -212,22 +267,29 @@
   {
     "name": "Ethan N Epperly",
     "site": "https://www.ethanepperly.com",
-    "feed": "https://www.ethanepperly.com/feed/"
-  },
-  {
-    "name": "inFERENCe",
-    "site": "https://inference.vc",
-    "feed": "https://inference.vc/feed/"
+    "feed": "https://www.ethanepperly.com/index.php/feed/",
+    "owner": "Ethan N. Epperly",
+    "category": "Individual researcher",
+    "description": "Causal inference and econometrics musings by Ethan Epperly.",
+    "tags": ["econometrics", "causal inference"]
   },
   {
     "name": "int8.io",
     "site": "https://int8.io",
-    "feed": "https://int8.io/feed/"
+    "feed": "https://int8.io/feed.xml",
+    "owner": "Tim Dettmers",
+    "category": "Individual researcher",
+    "description": "GPU and quantization deep dives for practical deep learning.",
+    "tags": ["quantization", "hardware", "deep learning"]
   },
   {
     "name": "Justin Domke",
-    "site": "https://jdomke.wordpress.com",
-    "feed": "https://jdomke.wordpress.com/feed/"
+    "site": "https://justindomke.wordpress.com",
+    "feed": "https://justindomke.wordpress.com/feed/",
+    "owner": "Justin Domke",
+    "category": "Individual researcher",
+    "description": "Probabilistic modeling and optimization posts from Justin Domke.",
+    "tags": ["probability", "optimization"]
   },
   {
     "name": "LilLog",
@@ -246,8 +308,12 @@
   },
   {
     "name": "Machine Thoughts",
-    "site": "https://machine-thoughts.net",
-    "feed": "https://machine-thoughts.net/feed/"
+    "site": "https://machinethoughts.wordpress.com",
+    "feed": "https://machinethoughts.wordpress.com/feed/",
+    "owner": "David McAllester",
+    "category": "Individual researcher",
+    "description": "Reflections on machine learning theory by David McAllester.",
+    "tags": ["ml theory", "reflections"]
   },
   {
     "name": "Normal Deviate",
@@ -256,13 +322,21 @@
   },
   {
     "name": "Seitas Place",
-    "site": "https://blog.seita.io",
-    "feed": "https://blog.seita.io/feed"
+    "site": "https://danieltakeshi.github.io",
+    "feed": "https://danieltakeshi.github.io/feed.xml",
+    "owner": "Daniel Seita",
+    "category": "Individual researcher",
+    "description": "Robotics and ML research notes from Daniel Seita.",
+    "tags": ["robotics", "ml"]
   },
   {
     "name": "Sorta Insightful",
-    "site": "https://alexirpan.com",
-    "feed": "https://alexirpan.com/rss.xml"
+    "site": "https://www.alexirpan.com",
+    "feed": "https://www.alexirpan.com/feed.xml",
+    "owner": "Alex Irpan",
+    "category": "Individual researcher",
+    "description": "Candid essays on ML research, career arcs, and alignment from Alex Irpan.",
+    "tags": ["ml", "alignment", "essays"]
   },
   {
     "name": "M Stories",
@@ -281,13 +355,21 @@
   },
   {
     "name": "The Wild Week in AI",
-    "site": "https://www.wildml.com",
-    "feed": "https://www.wildml.com/feed/"
+    "site": "https://dennybritz.com",
+    "feed": "https://dennybritz.com/index.xml",
+    "owner": "Denny Britz",
+    "category": "Individual newsletter",
+    "description": "Weekly curation of notable AI research and news.",
+    "tags": ["newsletter", "ai", "curation"]
   },
   {
     "name": "Tim van Erven",
-    "site": "https://www.timvanerven.nl/blog",
-    "feed": "https://www.timvanerven.nl/blog/feed/"
+    "site": "https://www.timvanerven.nl",
+    "feed": "https://www.timvanerven.nl/feed.xml",
+    "owner": "Tim van Erven",
+    "category": "Individual researcher",
+    "description": "PAC-Bayes and ML theory updates from Tim van Erven.",
+    "tags": ["pac-bayes", "ml theory"]
   },
   {
     "name": "UCSD Machine Learning Group",
@@ -295,24 +377,14 @@
     "feed": "https://ucsdml.github.io/feed.xml"
   },
   {
-    "name": "Andrej Karpathy Personal Site",
-    "site": "https://karpathy.ai",
-    "feed": "https://karpathy.ai/feed.xml"
-  },
-  {
     "name": "Andrej Karpathy Bear Blog",
     "site": "https://karpathy.bearblog.dev",
-    "feed": "https://karpathy.bearblog.dev/feed/"
+    "feed": "https://karpathy.bearblog.dev/feed/?type=rss"
   },
   {
     "name": "Connectionism",
     "site": "https://thinkingmachines.ai/blog",
     "feed": "https://thinkingmachines.ai/blog/rss.xml"
-  },
-  {
-    "name": "Ilya Sutskever",
-    "site": "https://www.cs.toronto.edu/~ilya/",
-    "feed": "https://www.cs.toronto.edu/~ilya/index.rdf"
   },
   {
     "name": "Greg Brockman",
@@ -323,16 +395,6 @@
     "name": "Sam Altman",
     "site": "https://blog.samaltman.com",
     "feed": "https://blog.samaltman.com/posts.atom"
-  },
-  {
-    "name": "Jan Leike",
-    "site": "https://jan.leike.name",
-    "feed": "https://jan.leike.name/feed/"
-  },
-  {
-    "name": "Dario Amodei",
-    "site": "https://darioamodei.com",
-    "feed": "https://darioamodei.com/feed/"
   },
   {
     "name": "Redwood Research",
