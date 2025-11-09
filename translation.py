@@ -100,7 +100,7 @@ class AzureTranslator:
             "Content filter blocked translation (depth={}, chars={}): {}",
             depth,
             len(chunk),
-            reason,
+            self._summarize_filter_reason(reason),
         )
 
         if not can_retry:
@@ -200,3 +200,12 @@ class AzureTranslator:
             if "content_filter" in code or "responsibleaipolicyviolation" in inner_code:
                 return True
         return "content_filter" in str(exc).lower()
+
+    def _summarize_filter_reason(self, reason: str) -> str:
+        if not reason:
+            return "Azure content filter"
+        if "content management policy" in reason or "ResponsibleAIPolicyViolation" in reason:
+            return "Azure Responsible AI policy violation"
+        if len(reason) > 180:
+            return reason[:177] + "..."
+        return reason
