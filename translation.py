@@ -90,7 +90,7 @@ class AzureTranslator:
 
     def _handle_content_filter(self, chunk: str, depth: int, reason: str) -> str:
         logger.warning(
-            "Content filter blocked translation (depth=%d, chars=%d): %s",
+            "Content filter blocked translation (depth={}, chars={}): {}",
             depth,
             len(chunk),
             reason,
