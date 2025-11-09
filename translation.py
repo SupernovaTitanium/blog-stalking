@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import List, Sequence
 
 from loguru import logger
-from openai import AzureOpenAI
+from openai import AzureOpenAI, BadRequestError
+
+
+class ContentFilterTriggeredError(Exception):
+    """Raised when Azure returns a content-filtered response."""
 
 
 class AzureTranslator:
@@ -27,6 +31,7 @@ class AzureTranslator:
         self.target_language = target_language
         self.max_chars = max_chars
         self.temperature = temperature
+        self._max_filter_depth = 3
 
     def translate_batch(self, texts: Sequence[str]) -> List[str]:
         translations: List[str] = []
@@ -47,7 +52,7 @@ class AzureTranslator:
             translations.append(translation)
         return translations
 
-    def _translate_chunk(self, chunk: str) -> str:
+    def _translate_chunk(self, chunk: str, *, _depth: int = 0) -> str:
         prompt = (
             f"Translate the following content into {self.target_language}. "
             "Do not drop any sentences. Preserve LaTeX/math symbols, URLs, Markdown, and fenced code exactly as-is."
@@ -65,10 +70,43 @@ class AzureTranslator:
                 kwargs["temperature"] = self.temperature
 
             response = self.client.chat.completions.create(**kwargs)
-            return response.choices[0].message.content.strip()
+            choice = response.choices[0]
+            content = (choice.message.content or "").strip()
+            if choice.finish_reason == "content_filter" or not content:
+                raise ContentFilterTriggeredError(
+                    f"Azure returned finish_reason={choice.finish_reason!r}"
+                )
+            return content
+        except ContentFilterTriggeredError as exc:
+            return self._handle_content_filter(chunk, _depth, str(exc))
+        except BadRequestError as exc:
+            if self._is_content_filter_error(exc):
+                return self._handle_content_filter(chunk, _depth, str(exc))
+            logger.exception("Translation chunk failed")
+            return f"[Translation error: {exc}]"
         except Exception as exc:
             logger.exception("Translation chunk failed")
             return f"[Translation error: {exc}]"
+
+    def _handle_content_filter(self, chunk: str, depth: int, reason: str) -> str:
+        logger.warning(
+            "Content filter blocked translation (depth=%d, chars=%d): %s",
+            depth,
+            len(chunk),
+            reason,
+        )
+        if depth >= self._max_filter_depth or len(chunk) <= 200:
+            return "[Translation skipped: blocked by Azure content filter]"
+
+        parts = self._split_for_filter(chunk)
+        if len(parts) <= 1:
+            return "[Translation skipped: blocked by Azure content filter]"
+
+        translations = [
+            self._translate_chunk(part, _depth=depth + 1) for part in parts if part
+        ]
+        combined = "\n\n".join(part for part in translations if part).strip()
+        return combined or "[Translation skipped: blocked by Azure content filter]"
 
     def _chunk_text(self, text: str) -> List[str]:
         if len(text) <= self.max_chars:
@@ -111,6 +149,22 @@ class AzureTranslator:
         flush_current()
         return chunks
 
+    def _split_for_filter(self, text: str) -> List[str]:
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        if len(paragraphs) > 1:
+            mid = len(paragraphs) // 2
+            first = "\n\n".join(paragraphs[:mid]).strip()
+            second = "\n\n".join(paragraphs[mid:]).strip()
+            return [part for part in (first, second) if part]
+
+        midpoint = max(len(text) // 2, 1)
+        split_at = text.rfind(" ", 0, midpoint)
+        if split_at <= 0:
+            split_at = midpoint
+        first = text[:split_at].strip()
+        second = text[split_at:].strip()
+        return [part for part in (first, second) if part]
+
     def _split_long_text(self, text: str) -> List[str]:
         pieces: List[str] = []
         start = 0
@@ -125,3 +179,20 @@ class AzureTranslator:
             pieces.append(text[start:end].strip())
             start = end
         return [piece for piece in pieces if piece]
+
+    def _is_content_filter_error(self, exc: Exception) -> bool:
+        if not isinstance(exc, BadRequestError):
+            return False
+        try:
+            data = exc.response.json() if exc.response else None
+        except Exception:
+            data = None
+
+        if isinstance(data, dict):
+            error = data.get("error") or {}
+            code = (error.get("code") or "").lower()
+            inner = error.get("innererror") or {}
+            inner_code = (inner.get("code") or "").lower()
+            if "content_filter" in code or "responsibleaipolicyviolation" in inner_code:
+                return True
+        return "content_filter" in str(exc).lower()
