@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import calendar
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from html import escape as html_escape
+from typing import Any, List, Mapping, Optional
 
 import feedparser
 from bs4 import BeautifulSoup
@@ -30,10 +32,58 @@ class FeedPost:
     translation: Optional[str] = None
 
 
-def _parse_datetime(struct_time) -> datetime:
+def _parse_datetime(struct_time: time.struct_time | None) -> datetime | None:
     if struct_time is None:
-        return datetime.now(timezone.utc)
-    return datetime.fromtimestamp(time.mktime(struct_time), tz=timezone.utc)
+        return None
+    try:
+        timestamp = calendar.timegm(struct_time)
+    except (OverflowError, ValueError):
+        return None
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+
+
+def _extract_entry_datetime(entry: Mapping[str, Any]) -> datetime | None:
+    for field in ("published_parsed", "updated_parsed", "created_parsed"):
+        struct_time = entry.get(field)
+        parsed = _parse_datetime(struct_time)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _coerce_html_value(candidate: Any) -> str:
+    if not candidate:
+        return ""
+    if isinstance(candidate, str):
+        return candidate
+    if isinstance(candidate, (list, tuple)):
+        for item in candidate:
+            value = _coerce_html_value(item)
+            if value:
+                return value
+        return ""
+    if isinstance(candidate, dict):
+        value = candidate.get("value")
+        return value or ""
+    value = getattr(candidate, "value", None)
+    return value or ""
+
+
+def _extract_entry_html(entry: Mapping[str, Any]) -> str:
+    html_candidates: list[str] = []
+    content = entry.get("content")
+    value = _coerce_html_value(content)
+    if value:
+        html_candidates.append(value)
+    for field in ("summary", "summary_detail", "description"):
+        value = _coerce_html_value(entry.get(field))
+        if value:
+            html_candidates.append(value)
+            break
+    for html in html_candidates:
+        if html:
+            return html
+    return ""
 
 
 def fetch_recent_posts(
@@ -55,7 +105,10 @@ def fetch_recent_posts(
     posts: List[FeedPost] = []
     feed_title = feed.feed.get("title") or feed.feed.get("link") or feed_url
     for entry in feed.entries:
-        published = _parse_datetime(getattr(entry, "published_parsed", None))
+        published = _extract_entry_datetime(entry)
+        if published is None:
+            logger.debug("Skipping entry without timestamp from {}", feed_url)
+            continue
         if published < cutoff:
             continue
 
@@ -63,12 +116,7 @@ def fetch_recent_posts(
         if not link:
             continue
 
-        raw_html = ""
-        if entry.get("content"):
-            raw_html = entry.content[0].value
-        elif entry.get("summary"):
-            raw_html = entry.summary
-
+        raw_html = _extract_entry_html(entry)
         soup = BeautifulSoup(raw_html or "", "html.parser")
         text = soup.get_text("\n").strip()
         title = (getattr(entry, "title", "") or text or "New post").strip()
@@ -90,7 +138,8 @@ def fetch_recent_posts(
                 url=link,
                 title=title,
                 published=published,
-                content_html=raw_html or f"<p>{text}</p>",
+                content_html=raw_html
+                or (f"<p>{html_escape(text)}</p>" if text else f"<p>{html_escape(title)}</p>"),
                 content_text=text or title,
                 source=source,
                 feed_url=feed_url,
