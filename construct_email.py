@@ -29,6 +29,14 @@ FRAMEWORK = """\
     .source-extra span {{ margin-right: 10px; }}
     .source-tags {{ margin-top: 4px; }}
     .source-tag {{ display: inline-block; background: #e4e4e4; color: #444; border-radius: 999px; padding: 2px 8px; font-size: 12px; margin-right: 4px; }}
+    .summary-section {{ border: 1px solid #ddd; border-radius: 10px; padding: 16px; background: #fff; margin-bottom: 24px; }}
+    .summary-header {{ font-size: 18px; font-weight: bold; margin-bottom: 12px; color: #222; }}
+    .summary-item {{ padding: 10px 0; border-top: 1px solid #eee; }}
+    .summary-item:first-of-type {{ border-top: none; }}
+    .summary-blog {{ font-size: 16px; font-weight: bold; color: #333; margin-bottom: 4px; }}
+    .summary-text {{ font-size: 14px; color: #555; margin-bottom: 6px; }}
+    .summary-link {{ font-size: 13px; color: #0066cc; text-decoration: none; }}
+    .summary-link:hover {{ text-decoration: underline; }}
   </style>
 </head>
 <body>
@@ -51,7 +59,7 @@ EMPTY_BLOCK = """\
 """
 
 POST_TEMPLATE = """\
-<table class="post" style="border-left-color: {accent};">
+<table class="post" id="{anchor}" style="border-left-color: {accent};">
   <tr>
     <td style="font-size:20px; font-weight:bold;">
       <a href="{url}" target="_blank" style="color:#333; text-decoration:none;">{title}</a>
@@ -85,6 +93,21 @@ POST_TEMPLATE = """\
     </td>
   </tr>
 </table>
+"""
+
+SUMMARY_SECTION_TEMPLATE = """\
+<div class="summary-section">
+  <div class="summary-header">快速摘要</div>
+  {items}
+</div>
+"""
+
+SUMMARY_ITEM_TEMPLATE = """\
+<div class="summary-item">
+  <div class="summary-blog">{blog_name}</div>
+  <div class="summary-text">{summary}</div>
+  <a href="#{anchor}" class="summary-link">跳轉到詳細內容</a>
+</div>
 """
 
 
@@ -147,16 +170,46 @@ def _render_source_tags(post: FeedPost) -> str:
     return f'<div class="source-tags">{chips}</div>'
 
 
+def _anchor_id(post: FeedPost) -> str:
+    seed = (post.id or post.url or post.title or "").encode("utf-8", "ignore")
+    digest = hashlib.md5(seed).hexdigest()[:10]
+    return f"post-{digest}"
+
+
+def _render_summary_text(post: FeedPost) -> str:
+    candidates = (post.translation or "").strip() or (post.content_text or "").strip()
+    if not candidates:
+        return "<em>沒有可用的摘要</em>"
+    for line in candidates.splitlines():
+        summary = line.strip()
+        if summary:
+            break
+    else:
+        summary = candidates.strip()
+    if len(summary) > 120:
+        summary = summary[:117].rstrip() + "..."
+    return escape(summary)
+
+
 def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
     if not posts:
         return FRAMEWORK.format(content=EMPTY_BLOCK)
 
+    summary_items: list[str] = []
     blocks = []
     for post in posts:
         accent = _resolve_accent(post)
         badge = _render_source_badge(post, accent)
         source_extra = _render_source_extra(post)
         tags_html = _render_source_tags(post)
+        anchor = _anchor_id(post)
+        summary_items.append(
+            SUMMARY_ITEM_TEMPLATE.format(
+                blog_name=escape(post.source_name or post.source or "Unknown"),
+                summary=_render_summary_text(post),
+                anchor=anchor,
+            )
+        )
         blocks.append(
             POST_TEMPLATE.format(
                 title=escape(post.title),
@@ -170,9 +223,12 @@ def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
                 source_extra=source_extra,
                 source_tags=tags_html,
                 accent=accent,
+                anchor=anchor,
             )
         )
-    return FRAMEWORK.format(content="<br><br>".join(blocks))
+    summary_html = SUMMARY_SECTION_TEMPLATE.format(items="".join(summary_items))
+    details_html = "<br><br>".join(blocks)
+    return FRAMEWORK.format(content=f"{summary_html}<br><br>{details_html}")
 
 
 def send_email(
