@@ -59,7 +59,8 @@ EMPTY_BLOCK = """\
 """
 
 POST_TEMPLATE = """\
-<table class="post" id="{anchor}" style="border-left-color: {accent};">
+<a id="{anchor}" name="{anchor}"></a>
+<table class="post" style="border-left-color: {accent};">
   <tr>
     <td style="font-size:20px; font-weight:bold;">
       <a href="{url}" target="_blank" style="color:#333; text-decoration:none;">{title}</a>
