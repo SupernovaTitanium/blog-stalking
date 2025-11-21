@@ -61,7 +61,7 @@ EMPTY_BLOCK = """\
 """
 
 POST_TEMPLATE = """\
-<a id="{anchor}" name="{anchor}" style="display:block;height:1px;line-height:1px;"></a>
+<div id="{anchor}" style="height:1px;line-height:1px;"></div>
 <table class="post" style="border-left-color: {accent};">
   <tr>
     <td style="font-size:20px; font-weight:bold;">
@@ -90,21 +90,21 @@ POST_TEMPLATE = """\
     </td>
   </tr>
   <tr>
-    <td class="translation" id="{anchor}">
+    <td class="translation">
       <strong>Translation ({target_language}):</strong><br/>
       {translation_html}
     </td>
   </tr>
   <tr>
     <td style="text-align:right; padding-top:8px;">
-      <a href="#overview" class="summary-link">回到摘要</a>
+      <a href="#overview" class="summary-link" style="color:#0066cc; text-decoration:none;">回到摘要</a>
     </td>
   </tr>
 </table>
 """
 
 SUMMARY_SECTION_TEMPLATE = """\
-<a id="overview" name="overview" style="display:block;height:1px;line-height:1px;"></a>
+<div id="overview" style="height:1px;line-height:1px;"></div>
 <div class="summary-section">
   <div class="summary-header">快速摘要</div>
   {items}
