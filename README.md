@@ -54,6 +54,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | `BLOG_FEED_URL` | *(blank)* | Second legacy slot for quick experiments. |
 | `WINDOW_HOURS` | `24` | Look-back window when fetching posts. |
 | `MAX_POST_NUM` | `-1` | Limit on how many posts to send (`-1` keeps everything). |
+| `MAX_POSTS_PER_FEED` | `-1` | Limit on how many posts to keep per feed (`-1` keeps everything). |
 | `SEND_EMPTY` | `false` | Set to `true` to force an email even when no posts are new. |
 | `TARGET_LANGUAGE` | `Chinese (Traditional)` | Translation language. |
 | `EMAIL_SUBJECT_PREFIX` | `Blog Pusher Digest` | Prefix for the email subject line. |
@@ -73,12 +74,12 @@ uv run main.py --debug
 The script reads either CLI flags or environment variables. Use `--feed_list` to point at a different JSON file when testing.
 
 ## Test Workflow
-The `.github/workflows/test.yml` job stress-tests the feed list with a long lookback window and records two logs that are uploaded as the `testflow-logs` artifact: `artifacts/testflow.log` (full debug output) and `artifacts/feed_failures.log` (one line per skipped feed with the exception). Reproduce locally with:
+The `.github/workflows/test.yml` job runs against a small debug list (`feeds/test-blogs.json`) of five blogs (Tao, Simon Willison, John D. Cook, Theory of Computing Report, Redwood Research) and keeps at most two posts per feed. It records two logs that are uploaded as the `testflow-logs` artifact: `artifacts/testflow.log` (full debug output) and `artifacts/feed_failures.log` (one line per skipped feed with the exception). Reproduce locally with:
 ```bash
 mkdir -p artifacts
-uv run main.py --debug --failure_log artifacts/feed_failures.log 2>&1 | tee artifacts/testflow.log
+uv run main.py --debug --feed_list feeds/test-blogs.json --max_posts_per_feed 2 --failure_log artifacts/feed_failures.log 2>&1 | tee artifacts/testflow.log
 ```
-Set `FAILURE_LOG` (or pass `--failure_log`) in any run to capture fetch issues for later inspection.
+Use `MAX_POSTS_PER_FEED`/`--max_posts_per_feed` to cap posts per feed and `FAILURE_LOG`/`--failure_log` to capture fetch issues for later inspection.
 
 ## Feed Catalog
 All monitored sources live in `feeds/blogs.json`. Each entry accepts either a raw string URL or an object with `feed`/`url` fields (plus optional metadata). Update the file and commit it to change the watch list; no code changes are required. The default catalog mirrors the table below.

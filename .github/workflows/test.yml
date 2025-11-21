@@ -37,11 +37,12 @@ jobs:
 
       - name: Run script
         env:
-          FEED_LIST: ${{ vars.FEED_LIST || 'feeds/blogs.json' }}
+          FEED_LIST: ${{ vars.TEST_FEED_LIST || 'feeds/test-blogs.json' }}
           FEED_URL: ${{ vars.FEED_URL || '' }}
           BLOG_FEED_URL: ${{ vars.BLOG_FEED_URL || '' }}
           WINDOW_HOURS: ${{ vars.TEST_WINDOW_HOURS || vars.WINDOW_HOURS || steps.october-window.outputs.hours }}
-          MAX_POST_NUM: ${{ vars.TEST_MAX_POST_NUM || vars.MAX_POST_NUM || '-1' }}
+          MAX_POST_NUM: ${{ vars.TEST_MAX_POST_NUM || '-1' }}
+          MAX_POSTS_PER_FEED: ${{ vars.TEST_MAX_POSTS_PER_FEED || '2' }}
           SEND_EMPTY: ${{ vars.SEND_EMPTY || 'false' }}
           TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE || 'Chinese (Traditional)' }}
           EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX || 'Blog Pusher Digest' }}

@@ -141,6 +141,12 @@ if __name__ == "__main__":
         help="Maximum number of posts per digest; -1 keeps everything within the window.",
     )
     add_argument(
+        "--max_posts_per_feed",
+        type=int,
+        default=-1,
+        help="Maximum number of posts to keep per feed; -1 keeps everything within the window.",
+    )
+    add_argument(
         "--send_empty",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -244,10 +250,11 @@ if __name__ == "__main__":
     posts_by_id: dict[str, FeedPost] = {}
     failed_feeds: list[tuple[str, str]] = []
     failure_log_path = Path(args.failure_log).expanduser() if args.failure_log else None
+    per_feed_limit = None if args.max_posts_per_feed <= 0 else args.max_posts_per_feed
     for cfg in feed_configs:
         url = cfg.url
         try:
-            for post in fetch_recent_posts(url, args.window_hours):
+            for post in fetch_recent_posts(url, args.window_hours, per_feed_limit):
                 key = f"{post.source}:{post.id}"
                 posts_by_id[key] = post
         except Exception as exc:

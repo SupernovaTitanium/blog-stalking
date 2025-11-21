@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Whats New - Terence Tao",
+    "site": "https://terrytao.wordpress.com",
+    "feed": "https://terrytao.wordpress.com/feed/"
+  },
+  {
+    "name": "Simon Willison",
+    "site": "https://simonwillison.net",
+    "feed": "https://simonwillison.net/atom/everything/"
+  },
+  {
+    "name": "John D Cook Blog",
+    "site": "https://www.johndcook.com/blog",
+    "feed": "https://www.johndcook.com/blog/feed/"
+  },
+  {
+    "name": "Theory of Computing Report",
+    "site": "https://theory.report",
+    "feed": "https://theory.report/rss20.xml"
+  },
+  {
+    "name": "Redwood Research",
+    "site": "https://blog.redwoodresearch.org",
+    "feed": "https://blog.redwoodresearch.org/feed"
+  }
+]
