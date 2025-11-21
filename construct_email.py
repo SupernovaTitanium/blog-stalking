@@ -61,6 +61,7 @@ EMPTY_BLOCK = """\
 """
 
 POST_TEMPLATE = """\
+<a id="{anchor}" name="{anchor}" style="display:block;height:1px;line-height:1px;"></a>
 <table class="post" style="border-left-color: {accent};">
   <tr>
     <td style="font-size:20px; font-weight:bold;">
