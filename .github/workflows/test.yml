@@ -55,4 +55,14 @@ jobs:
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           RECEIVER: ${{ secrets.RECEIVER }}
         run: |
-          uv run main.py --debug
+          set -eo pipefail
+          mkdir -p artifacts
+          uv run main.py --debug --failure_log artifacts/feed_failures.log 2>&1 | tee artifacts/testflow.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflow-logs
+          path: artifacts
+          retention-days: 7

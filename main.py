@@ -181,6 +181,12 @@ if __name__ == "__main__":
         default="Blog Pusher Digest",
         help="Subject prefix for outgoing email.",
     )
+    add_argument(
+        "--failure_log",
+        type=str,
+        default="",
+        help="Optional path to write feed fetch failures (useful for test runs).",
+    )
     parser.add_argument("--debug", action="store_true", help="Enable verbose logging.")
     args = parser.parse_args()
 
@@ -236,6 +242,8 @@ if __name__ == "__main__":
 
     logger.info(f"Fetching posts from {len(feed_configs)} feed(s)...")
     posts_by_id: dict[str, FeedPost] = {}
+    failed_feeds: list[tuple[str, str]] = []
+    failure_log_path = Path(args.failure_log).expanduser() if args.failure_log else None
     for cfg in feed_configs:
         url = cfg.url
         try:
@@ -243,7 +251,22 @@ if __name__ == "__main__":
                 key = f"{post.source}:{post.id}"
                 posts_by_id[key] = post
         except Exception as exc:
-            logger.warning(f"Skipping feed {url}: {exc}")
+            failure_reason = f"{type(exc).__name__}: {exc}"
+            failure_reason = " ".join(failure_reason.split())
+            logger.warning(f"Skipping feed {url}: {failure_reason}")
+            failed_feeds.append((url, failure_reason))
+
+    if failed_feeds:
+        logger.warning(f"Skipped {len(failed_feeds)} feed(s) due to errors:")
+        for url, reason in failed_feeds:
+            logger.warning(f"  {url} -> {reason}")
+        if failure_log_path:
+            failure_log_path.parent.mkdir(parents=True, exist_ok=True)
+            failure_log_path.write_text(
+                "\n".join(f"{url}\t{reason}" for url, reason in failed_feeds),
+                encoding="utf-8",
+            )
+            logger.info(f"Fetch failure log written to {failure_log_path}")
 
     def _derive_site_from_url(url: str | None) -> str | None:
         if not url:

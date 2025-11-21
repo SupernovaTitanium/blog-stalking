@@ -58,6 +58,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | `TARGET_LANGUAGE` | `Chinese (Traditional)` | Translation language. |
 | `EMAIL_SUBJECT_PREFIX` | `Blog Pusher Digest` | Prefix for the email subject line. |
 | `AZURE_OPENAI_API_VERSION` | `2024-02-01` | API version for the Azure OpenAI client. |
+| `FAILURE_LOG` | *(blank)* | Optional path to write feed fetch failures (useful for debugging/test runs). |
 
 4. **Trigger the workflow** from the Actions tab or wait for the nightly schedule (22:00 UTC). Check the run logs for translation details and SMTP delivery results.
 
@@ -70,6 +71,14 @@ export AZURE_OPENAI_ENDPOINT=...
 uv run main.py --debug
 ```
 The script reads either CLI flags or environment variables. Use `--feed_list` to point at a different JSON file when testing.
+
+## Test Workflow
+The `.github/workflows/test.yml` job stress-tests the feed list with a long lookback window and records two logs that are uploaded as the `testflow-logs` artifact: `artifacts/testflow.log` (full debug output) and `artifacts/feed_failures.log` (one line per skipped feed with the exception). Reproduce locally with:
+```bash
+mkdir -p artifacts
+uv run main.py --debug --failure_log artifacts/feed_failures.log 2>&1 | tee artifacts/testflow.log
+```
+Set `FAILURE_LOG` (or pass `--failure_log`) in any run to capture fetch issues for later inspection.
 
 ## Feed Catalog
 All monitored sources live in `feeds/blogs.json`. Each entry accepts either a raw string URL or an object with `feed`/`url` fields (plus optional metadata). Update the file and commit it to change the watch list; no code changes are required. The default catalog mirrors the table below.
