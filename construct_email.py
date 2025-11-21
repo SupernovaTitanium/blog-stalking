@@ -95,10 +95,16 @@ POST_TEMPLATE = """\
       {translation_html}
     </td>
   </tr>
+  <tr>
+    <td style="text-align:right; padding-top:8px;">
+      <a href="#overview" class="summary-link">回到摘要</a>
+    </td>
+  </tr>
 </table>
 """
 
 SUMMARY_SECTION_TEMPLATE = """\
+<a id="overview" name="overview" style="display:block;height:1px;line-height:1px;"></a>
 <div class="summary-section">
   <div class="summary-header">快速摘要</div>
   {items}
