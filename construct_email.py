@@ -61,11 +61,14 @@ EMPTY_BLOCK = """\
 """
 
 POST_TEMPLATE = """\
-<div id="{anchor}" style="height:1px;line-height:1px;"></div>
-<table class="post" style="border-left-color: {accent};">
+<a id="{anchor}" name="{anchor}" style="display:block;height:1px;line-height:1px;"></a>
+<table class="post" id="{anchor}-section" style="border-left-color: {accent};">
   <tr>
     <td style="font-size:20px; font-weight:bold;">
       <a href="{url}" target="_blank" style="color:#333; text-decoration:none;">{title}</a>
+      <span style="float:right; font-size:13px;">
+        <a href="#overview" class="summary-link" style="color:#0066cc; text-decoration:none;">回到摘要</a>
+      </span>
     </td>
   </tr>
   <tr>
@@ -95,16 +98,12 @@ POST_TEMPLATE = """\
       {translation_html}
     </td>
   </tr>
-  <tr>
-    <td style="text-align:right; padding-top:8px;">
-      <a href="#overview" class="summary-link" style="color:#0066cc; text-decoration:none;">回到摘要</a>
-    </td>
-  </tr>
 </table>
 """
 
 SUMMARY_SECTION_TEMPLATE = """\
-<div id="overview" style="height:1px;line-height:1px;"></div>
+<a id="overview" name="overview" style="display:block;height:1px;line-height:1px;"></a>
+<div id="overview-section" style="height:1px;line-height:1px;"></div>
 <div class="summary-section">
   <div class="summary-header">快速摘要</div>
   {items}
