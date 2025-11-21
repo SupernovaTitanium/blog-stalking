@@ -34,6 +34,8 @@ FRAMEWORK = """\
     .summary-item {{ padding: 10px 0; border-top: 1px solid #eee; }}
     .summary-item:first-of-type {{ border-top: none; }}
     .summary-blog {{ font-size: 16px; font-weight: bold; color: #333; margin-bottom: 4px; }}
+    .summary-title {{ font-size: 14px; font-weight: 600; color: #222; margin-bottom: 4px; }}
+    .summary-meta {{ font-size: 12px; color: #777; margin-bottom: 4px; }}
     .summary-text {{ font-size: 14px; color: #555; margin-bottom: 6px; }}
     .summary-link {{ font-size: 13px; color: #0066cc; text-decoration: none; }}
     .summary-link:hover {{ text-decoration: underline; }}
@@ -59,7 +61,6 @@ EMPTY_BLOCK = """\
 """
 
 POST_TEMPLATE = """\
-<a id="{anchor}" name="{anchor}"></a>
 <table class="post" style="border-left-color: {accent};">
   <tr>
     <td style="font-size:20px; font-weight:bold;">
@@ -88,7 +89,7 @@ POST_TEMPLATE = """\
     </td>
   </tr>
   <tr>
-    <td class="translation">
+    <td class="translation" id="{anchor}">
       <strong>Translation ({target_language}):</strong><br/>
       {translation_html}
     </td>
@@ -106,10 +107,14 @@ SUMMARY_SECTION_TEMPLATE = """\
 SUMMARY_ITEM_TEMPLATE = """\
 <div class="summary-item">
   <div class="summary-blog">{blog_name}</div>
+  {author_html}
+  <div class="summary-title">{title}</div>
   <div class="summary-text">{summary}</div>
   <a href="#{anchor}" class="summary-link">跳轉到詳細內容</a>
 </div>
 """
+
+SUMMARY_MAX_CHARS = 100
 
 
 def _format_datetime(dt_obj: datetime) -> str:
@@ -172,8 +177,20 @@ def _render_source_tags(post: FeedPost) -> str:
 
 
 def _anchor_id(post: FeedPost) -> str:
-    seed = (post.id or post.url or post.title or "").encode("utf-8", "ignore")
-    digest = hashlib.md5(seed).hexdigest()[:10]
+    published = (
+        post.published.isoformat() if isinstance(post.published, datetime) else ""
+    )
+    seed = "||".join(
+        [
+            post.id or "",
+            post.url or "",
+            post.title or "",
+            post.source or "",
+            post.feed_url or "",
+            published,
+        ]
+    ).encode("utf-8", "ignore")
+    digest = hashlib.md5(seed).hexdigest()[:12]
     return f"post-{digest}"
 
 
@@ -181,15 +198,14 @@ def _render_summary_text(post: FeedPost) -> str:
     candidates = (post.translation or "").strip() or (post.content_text or "").strip()
     if not candidates:
         return "<em>沒有可用的摘要</em>"
-    for line in candidates.splitlines():
-        summary = line.strip()
-        if summary:
-            break
-    else:
-        summary = candidates.strip()
-    if len(summary) > 120:
-        summary = summary[:117].rstrip() + "..."
-    return escape(summary)
+    flattened = " ".join(
+        line.strip() for line in candidates.splitlines() if line.strip()
+    ).strip()
+    if not flattened:
+        return "<em>沒有可用的摘要</em>"
+    if len(flattened) > SUMMARY_MAX_CHARS:
+        flattened = flattened[:SUMMARY_MAX_CHARS].rstrip() + "..."
+    return escape(flattened)
 
 
 def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
@@ -204,16 +220,23 @@ def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
         source_extra = _render_source_extra(post)
         tags_html = _render_source_tags(post)
         anchor = _anchor_id(post)
+        author_html = (
+            f'<div class="summary-meta">{escape(post.source_owner)}</div>'
+            if post.source_owner
+            else ""
+        )
         summary_items.append(
             SUMMARY_ITEM_TEMPLATE.format(
                 blog_name=escape(post.source_name or post.source or "Unknown"),
+                title=escape(post.title or "Untitled"),
                 summary=_render_summary_text(post),
                 anchor=anchor,
+                author_html=author_html,
             )
         )
         blocks.append(
             POST_TEMPLATE.format(
-                title=escape(post.title),
+                title=escape(post.title or "Untitled"),
                 url=post.url,
                 published=_format_datetime(post.published),
                 original_html=post.content_html,

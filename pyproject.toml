@@ -10,4 +10,9 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "feedparser>=6.0.11",
     "beautifulsoup4>=4.12.3",
+    "requests>=2.31.0",
+    "arxiv>=2.1.0",
+    "tiktoken>=0.7.0",
+    "sentence-transformers>=3.0.0",
+    "numpy>=1.26.0",
 ]

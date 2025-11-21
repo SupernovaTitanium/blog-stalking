@@ -31,7 +31,10 @@ def add_argument(*args, **kwargs):
     if env_value in (None, ""):
         return
     arg_type = kwargs.get("type")
-    if arg_type is bool:
+    action = kwargs.get("action")
+    if action is argparse.BooleanOptionalAction:
+        env_value = env_value.lower() in {"1", "true", "yes", "on"}
+    elif arg_type is bool:
         env_value = env_value.lower() in {"1", "true", "yes", "on"}
     elif arg_type:
         env_value = arg_type(env_value)
@@ -139,7 +142,7 @@ if __name__ == "__main__":
     )
     add_argument(
         "--send_empty",
-        type=bool,
+        action=argparse.BooleanOptionalAction,
         default=False,
         help="Send an email even when no new posts are found.",
     )
