@@ -7,7 +7,7 @@
 
 <div align="center">
 
-  <strong>Translate RSS/Atom feeds and push them to your inbox.</strong>
+  <strong>Summarize/translate RSS/Atom feeds and push them to your inbox.</strong>
 
 </div>
 
@@ -27,7 +27,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 ## How It Works
 1. The `Blog Pusher` workflow installs dependencies with `uv` and runs `main.py`.
 2. `main.py` loads feed URLs from `feeds/blogs.json` (plus any overrides), fetches items from the last `WINDOW_HOURS`, and deduplicates them.
-3. Each post is translated with Azure OpenAI (`translation.py`) and rendered into an email via `construct_email.py`.
+3. Each post is summarized in Chinese (target language configurable) with Azure OpenAI (`translation.py`, prompt: “請將下列技術文章摘要成不超過 200 個中文字，保留核心概念、關鍵步驟與主要結論，避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。”) and rendered into an email via `construct_email.py`. The quick summary section shows the full LLM output—no additional truncation.
 4. The digest is sent through your SMTP server with the configured sender credentials.
 
 ## Deploy on GitHub
