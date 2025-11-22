@@ -42,7 +42,9 @@ FRAMEWORK = """\
   </style>
 </head>
 <body>
+<div style="max-width:900px; margin:0 auto;">
 {content}
+</div>
 <br><br>
 <div style="color:#888;font-size:12px;">
   You receive this email because the Blog Pusher workflow is active.
