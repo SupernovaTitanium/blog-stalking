@@ -122,9 +122,6 @@ SUMMARY_ITEM_TEMPLATE = """\
 </div>
 """
 
-SUMMARY_MAX_CHARS = 280
-
-
 def _format_datetime(dt_obj: datetime) -> str:
     local = dt_obj.astimezone()
     return local.strftime("%Y-%m-%d %H:%M %Z")
@@ -211,22 +208,7 @@ def _render_summary_text(post: FeedPost) -> str:
     ).strip()
     if not flattened:
         return "<em>沒有可用的摘要</em>"
-    if len(flattened) <= SUMMARY_MAX_CHARS:
-        return escape(flattened)
-
-    cutoff = SUMMARY_MAX_CHARS
-    sentence_marks = {".", "!", "?", "。", "！", "？", "；", ";", "，", ","}
-    candidates = [idx for idx, ch in enumerate(flattened) if ch in sentence_marks and idx <= cutoff]
-    if candidates:
-        cutoff = max(candidates)
-    else:
-        space_idx = flattened.rfind(" ", 0, cutoff)
-        if space_idx > 0:
-            cutoff = space_idx
-    trimmed = flattened[: cutoff + 1].rstrip()
-    if len(trimmed) < len(flattened):
-        trimmed = trimmed + "..."
-    return escape(trimmed)
+    return escape(flattened)
 
 
 def render_email(posts: Sequence[FeedPost], target_language: str) -> str:

@@ -54,9 +54,8 @@ class AzureTranslator:
 
     def _translate_chunk(self, chunk: str, *, _depth: int = 0) -> str:
         prompt = (
-            f"Translate the following content into {self.target_language}. "
-            "Do not drop any sentences. Preserve LaTeX/math symbols, URLs, Markdown, and fenced code exactly as-is."
-            " Return only the translated text while keeping paragraph structure."
+            "請將下列技術文章摘要成不超過 200 個中文字，保留核心概念、關鍵步驟與主要結論，"
+            "避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。"
         )
         try:
             kwargs = {
