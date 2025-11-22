@@ -62,12 +62,12 @@ EMPTY_BLOCK = """\
 
 POST_TEMPLATE = """\
 <a id="{anchor}" name="{anchor}" style="display:block;height:1px;line-height:1px;"></a>
-<table class="post" id="{anchor}-section" style="border-left-color: {accent};">
+<table class="post" id="{anchor}-section" style="width:100%; border:1px solid #ddd; border-left:6px solid {accent}; border-radius:6px; padding:16px; background:#f9f9f9; margin-bottom:24px; line-height:1.6;">
   <tr>
-    <td style="font-size:20px; font-weight:bold;">
+    <td style="font-size:20px; font-weight:bold; line-height:1.4;">
       <a href="{url}" target="_blank" style="color:#333; text-decoration:none;">{title}</a>
-      <span style="float:right; font-size:13px;">
-        <a href="#overview" class="summary-link" style="color:#0066cc; text-decoration:none;">回到摘要</a>
+      <span style="font-size:13px; margin-left:10px;">
+        <a href="#overview" style="color:#0066cc; text-decoration:none;">回到摘要</a>
       </span>
     </td>
   </tr>
@@ -88,12 +88,12 @@ POST_TEMPLATE = """\
     </td>
   </tr>
   <tr>
-    <td>
+    <td style="line-height:1.6; padding-top:6px;">
       {original_html}
     </td>
   </tr>
   <tr>
-    <td class="translation">
+    <td class="translation" style="line-height:1.6;">
       <strong>Translation ({target_language}):</strong><br/>
       {translation_html}
     </td>
@@ -103,24 +103,26 @@ POST_TEMPLATE = """\
 
 SUMMARY_SECTION_TEMPLATE = """\
 <a id="overview" name="overview" style="display:block;height:1px;line-height:1px;"></a>
-<div id="overview-section" style="height:1px;line-height:1px;"></div>
-<div class="summary-section">
-  <div class="summary-header">快速摘要</div>
+<div class="summary-section" style="border:1px solid #ddd; border-radius:10px; padding:16px; background:#fff; margin-bottom:24px;">
+  <div class="summary-header" style="font-size:18px; font-weight:bold; margin-bottom:12px; color:#222;">快速摘要</div>
   {items}
 </div>
 """
 
 SUMMARY_ITEM_TEMPLATE = """\
-<div class="summary-item">
-  <div class="summary-blog">{blog_name}</div>
+<div class="summary-item" style="padding:12px 0; border-top:1px solid #eee;">
+  <h3 style="margin:0 0 6px; font-size:16px; color:#222;">{blog_name}</h3>
   {author_html}
-  <div class="summary-title">{title}</div>
-  <div class="summary-text">{summary}</div>
-  <a href="#{anchor}" class="summary-link">跳轉到詳細內容</a>
+  <ul style="margin:0; padding-left:18px; list-style-type:disc;">
+    <li style="margin:0 0 6px; line-height:1.6;">
+      <a href="#{anchor}" style="color:#0066cc; font-weight:600; text-decoration:none;">{title}</a>
+      <div style="font-size:13px; color:#555; margin-top:3px;">{summary}</div>
+    </li>
+  </ul>
 </div>
 """
 
-SUMMARY_MAX_CHARS = 100
+SUMMARY_MAX_CHARS = 280
 
 
 def _format_datetime(dt_obj: datetime) -> str:
@@ -209,9 +211,22 @@ def _render_summary_text(post: FeedPost) -> str:
     ).strip()
     if not flattened:
         return "<em>沒有可用的摘要</em>"
-    if len(flattened) > SUMMARY_MAX_CHARS:
-        flattened = flattened[:SUMMARY_MAX_CHARS].rstrip() + "..."
-    return escape(flattened)
+    if len(flattened) <= SUMMARY_MAX_CHARS:
+        return escape(flattened)
+
+    cutoff = SUMMARY_MAX_CHARS
+    sentence_marks = {".", "!", "?", "。", "！", "？", "；", ";", "，", ","}
+    candidates = [idx for idx, ch in enumerate(flattened) if ch in sentence_marks and idx <= cutoff]
+    if candidates:
+        cutoff = max(candidates)
+    else:
+        space_idx = flattened.rfind(" ", 0, cutoff)
+        if space_idx > 0:
+            cutoff = space_idx
+    trimmed = flattened[: cutoff + 1].rstrip()
+    if len(trimmed) < len(flattened):
+        trimmed = trimmed + "..."
+    return escape(trimmed)
 
 
 def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
@@ -226,11 +241,9 @@ def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
         source_extra = _render_source_extra(post)
         tags_html = _render_source_tags(post)
         anchor = _anchor_id(post)
-        author_html = (
-            f'<div class="summary-meta">{escape(post.source_owner)}</div>'
-            if post.source_owner
-            else ""
-        )
+        author_html = ""
+        if post.source_owner:
+            author_html = f'<div style="font-size:12px; color:#777; margin-bottom:4px;">{escape(post.source_owner)}</div>'
         summary_items.append(
             SUMMARY_ITEM_TEMPLATE.format(
                 blog_name=escape(post.source_name or post.source or "Unknown"),
