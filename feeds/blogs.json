@@ -5,6 +5,13 @@
     "feed": "https://terrytao.wordpress.com/feed/"
   },
   {
+    "name": "Terence Tao (Mastodon)",
+    "site": "https://mathstodon.xyz/@tao",
+    "feed": "https://mathstodon.xyz/@tao.rss",
+    "owner": "Terence Tao",
+    "category": "Mastodon feed"
+  },
+  {
     "name": "Gowerss Weblog",
     "site": "https://gowers.wordpress.com",
     "feed": "https://gowers.wordpress.com/feed/"
