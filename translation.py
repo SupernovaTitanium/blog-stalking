@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from typing import List, Sequence
 
 from loguru import logger
@@ -20,6 +22,7 @@ class AzureTranslator:
         api_version: str,
         target_language: str,
         max_chars: int = 4000,
+        max_total_chars: int = 12000,
         temperature: float | None = None,
     ):
         self.client = AzureOpenAI(
@@ -30,8 +33,49 @@ class AzureTranslator:
         self.deployment = deployment
         self.target_language = target_language
         self.max_chars = max_chars
+        self.max_total_chars = max_total_chars
         self.temperature = temperature
         self._max_filter_depth = 3
+
+    def translate_batch_by_feed(
+        self,
+        texts: Sequence[str],
+        feed_keys: Sequence[str],
+    ) -> List[str]:
+        if len(texts) != len(feed_keys):
+            raise ValueError("texts and feed_keys must have the same length")
+        if not texts:
+            return []
+
+        grouped: dict[str, list[tuple[int, str]]] = {}
+        for idx, (feed_key, text) in enumerate(zip(feed_keys, texts, strict=False)):
+            key = feed_key or "__unknown_feed__"
+            grouped.setdefault(key, []).append((idx, text))
+
+        results: List[str] = [""] * len(texts)
+        for feed_key, items in grouped.items():
+            indices = [idx for idx, _ in items]
+            feed_texts = [text for _, text in items]
+            summaries = self._translate_feed_once(feed_key, feed_texts)
+
+            if len(summaries) != len(feed_texts):
+                logger.warning(
+                    "Feed {} returned {} summaries for {} posts; padding/truncating.",
+                    feed_key,
+                    len(summaries),
+                    len(feed_texts),
+                )
+                if len(summaries) < len(feed_texts):
+                    summaries.extend(
+                        ["[Translation error: missing summary]"]
+                        * (len(feed_texts) - len(summaries))
+                    )
+                else:
+                    summaries = summaries[: len(feed_texts)]
+
+            for idx, summary in zip(indices, summaries, strict=False):
+                results[idx] = summary
+        return results
 
     def translate_batch(self, texts: Sequence[str]) -> List[str]:
         translations: List[str] = []
@@ -86,6 +130,162 @@ class AzureTranslator:
         except Exception as exc:
             logger.exception("Translation chunk failed")
             return f"[Translation error: {exc}]"
+
+    def _translate_feed_once(self, feed_key: str, texts: Sequence[str]) -> List[str]:
+        prepared = self._prepare_texts_for_feed(texts)
+        if not prepared:
+            return []
+
+        prompt = (
+            "請將下列技術文章摘要成不超過 200 個中文字，保留核心概念、關鍵步驟與主要結論，"
+            "避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。"
+            "請輸出 JSON 陣列，元素為字串，順序需與輸入文章一致。"
+        )
+        user_parts = [f"【Feed】{feed_key}", "【輸入】"]
+        for idx, text in enumerate(prepared, 1):
+            user_parts.append(f"【文章 {idx}】\n{text}")
+        user_content = "\n\n".join(user_parts)
+
+        try:
+            kwargs = {
+                "model": self.deployment,
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": user_content},
+                ],
+            }
+            if self.temperature is not None:
+                kwargs["temperature"] = self.temperature
+
+            response = self.client.chat.completions.create(**kwargs)
+            choice = response.choices[0]
+            content = (choice.message.content or "").strip()
+            if choice.finish_reason == "content_filter" or not content:
+                raise ContentFilterTriggeredError(
+                    f"Azure returned finish_reason={choice.finish_reason!r}"
+                )
+            summaries = self._parse_feed_summaries(content, len(prepared))
+            return [self._normalize_summary(s) for s in summaries]
+        except ContentFilterTriggeredError as exc:
+            logger.warning(
+                "Content filter blocked feed summary for {}: {}",
+                feed_key,
+                self._summarize_filter_reason(str(exc)),
+            )
+            return ["[Translation skipped: blocked by Azure content filter]"] * len(prepared)
+        except BadRequestError as exc:
+            if self._is_content_filter_error(exc):
+                logger.warning(
+                    "Content filter blocked feed summary for {}: {}",
+                    feed_key,
+                    self._summarize_filter_reason(str(exc)),
+                )
+                return ["[Translation skipped: blocked by Azure content filter]"] * len(prepared)
+            logger.exception("Feed summary failed for {}", feed_key)
+            return [f"[Translation error: {exc}]"] * len(prepared)
+        except Exception as exc:
+            logger.exception("Feed summary failed for {}", feed_key)
+            return [f"[Translation error: {exc}]"] * len(prepared)
+
+    def _prepare_texts_for_feed(self, texts: Sequence[str]) -> List[str]:
+        if not texts:
+            return []
+        count = len(texts)
+        per_post_cap = min(self.max_chars, max(120, self.max_total_chars // max(1, count)))
+        prepared: List[str] = []
+        for text in texts:
+            cleaned = (text or "").strip()
+            if not cleaned:
+                cleaned = "（無可用內容）"
+            prepared.append(self._truncate_text(cleaned, per_post_cap))
+        return prepared
+
+    def _truncate_text(self, text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        head = text[:limit]
+        cut = max(head.rfind(" "), head.rfind("\n"))
+        if cut >= max(0, limit - 120):
+            head = head[:cut]
+        return head.strip()
+
+    def _parse_feed_summaries(self, raw: str, expected: int) -> List[str]:
+        raw = (raw or "").strip()
+        if not raw:
+            return [""] * expected
+
+        parsed = None
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            parsed = None
+
+        if parsed is None:
+            parsed = self._extract_bracket_json(raw)
+
+        summaries: List[str] = []
+        if isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, str):
+                    summaries.append(item)
+                elif isinstance(item, dict):
+                    for key in ("summary", "text", "content"):
+                        if isinstance(item.get(key), str):
+                            summaries.append(item[key])
+                            break
+        elif isinstance(parsed, dict):
+            for key in ("summaries", "items", "results"):
+                if isinstance(parsed.get(key), list):
+                    summaries = [
+                        str(item) if isinstance(item, str) else str(item.get("summary", ""))
+                        for item in parsed[key]
+                    ]
+                    break
+
+        if not summaries:
+            summaries = self._parse_numbered_list(raw)
+
+        if not summaries:
+            return [""] * expected
+
+        if len(summaries) < expected:
+            summaries.extend([""] * (expected - len(summaries)))
+        return summaries[:expected]
+
+    def _extract_bracket_json(self, raw: str):
+        match = re.search(r'\[.*\]', raw, flags=re.DOTALL)
+        if not match:
+            return None
+        snippet = match.group(0)
+        try:
+            return json.loads(snippet)
+        except Exception:
+            return None
+
+    def _parse_numbered_list(self, raw: str) -> List[str]:
+        items: List[str] = []
+        current: List[str] = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if re.match(r'^\s*\d+[\.\)、\)]\s*', line):
+                if current:
+                    items.append(" ".join(current).strip())
+                    current = []
+                line = re.sub(r'^\s*\d+[\.\)、\)]\s*', '', line).strip()
+            current.append(line)
+        if current:
+            items.append(" ".join(current).strip())
+        return items
+
+    def _normalize_summary(self, text: str) -> str:
+        summary = (text or "").strip()
+        if summary.startswith(("「", "“", "\"")) and summary.endswith(("」", "”", "\"")):
+            summary = summary[1:-1].strip()
+        if len(summary) > 200:
+            summary = summary[:200].rstrip()
+        return summary
 
     def _handle_content_filter(self, chunk: str, depth: int, reason: str) -> str:
         can_retry = depth < self._max_filter_depth and len(chunk) > 200
