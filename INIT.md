@@ -2,13 +2,13 @@
 
 ## What this is
 - Daily GitHub Action that summarizes/translates RSS/Atom feeds and emails you a digest (default language: Traditional Chinese, configurable).
-- Uses Azure OpenAI with a 200-character Chinese summary prompt; summaries are not truncated in the email layout.
+- Uses OpenAI with a 200-character Chinese summary prompt; summaries are not truncated in the email layout.
 - HTML email built in `construct_email.py`; feed fetching in `feeds.py`; orchestration in `main.py`.
 
 ## One-time setup
 1) Install deps locally: `uv sync`
 2) Export env vars (or set repo secrets/vars):
-   - Required secrets: `AZURE_OPENAI_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`, `SMTP_SERVER`, `SMTP_PORT`, `SENDER`, `SENDER_PASSWORD`, `RECEIVER`
+   - Required secrets: `OPENAI_API_KEY`, `OPENAI_MODEL`, `SMTP_SERVER`, `SMTP_PORT`, `SENDER`, `SENDER_PASSWORD`, `RECEIVER`
    - Common vars: `FEED_LIST` (default `feeds/blogs.json`), `WINDOW_HOURS` (default `24`), `MAX_POSTS_PER_FEED` (default `-1`), `TARGET_LANGUAGE` (default `Chinese (Traditional)`), `FAILURE_LOG` (optional path)
 3) Run locally: `uv run main.py --debug`
 

@@ -3,14 +3,14 @@
 ## High-level Flow
 1) Entry (`main.py`): load feed configs (`feeds/blogs.json` + optional `FEED_URL`/`BLOG_FEED_URL`), de-duplicate, respect `WINDOW_HOURS`, `MAX_POST_NUM`, `MAX_POSTS_PER_FEED`.
 2) Fetch (`feeds.fetch_recent_posts`): parse feeds with `feedparser`, extract timestamps, HTML, text; skip stale/untimestamped items; build `FeedPost` with source metadata.
-3) Summarize (`translation.py`): Azure OpenAI Chat prompt (200-char Chinese summary, preserve math/LaTeX/URLs/Markdown/code; no subjective comments). Batch over posts; chunk if too long; retries on content filter.
+3) Summarize (`translation.py`): OpenAI Chat prompt (200-char Chinese summary, preserve math/LaTeX/URLs/Markdown/code; no subjective comments). Batch over posts; chunk if too long; retries on content filter.
 4) Render email (`construct_email.py`): build HTML with quick overview + per-post detail blocks, anchors for jump-to-detail/back-to-summary, centered `max-width:900px` container, consistent spacing/line-height.
 5) Send (`construct_email.send_email`): MIMEText HTML via SMTP (STARTTLS), subject prefix + datestamp.
 
 ## Key Files
 - `main.py`: CLI/env config, feed loading, error logging (`--failure_log`), deduplication, orchestration.
 - `feeds.py`: RSS/Atom parsing, datetime extraction, HTML/text extraction, per-feed limiting, `FeedPost` dataclass.
-- `translation.py`: Azure OpenAI client wrapper; Chinese summary prompt; chunking and content-filter handling.
+- `translation.py`: OpenAI client wrapper; Chinese summary prompt; chunking and content-filter handling.
 - `construct_email.py`: HTML/CSS templates, anchors (`#overview`, per-post ids), inline “回到摘要” link beside titles, no summary truncation.
 - `feeds/blogs.json`: primary feed catalog (includes Terence Tao Mastodon + blog); `feeds/test-blogs.json`: small debug set.
 - `INIT.md`: quick-start; `OPEN_SOURCE.md`: open-source readiness.
@@ -20,7 +20,7 @@
 - Feeds: `FEED_LIST`, `FEED_URL`, `BLOG_FEED_URL`
 - Windows/limits: `WINDOW_HOURS`, `MAX_POST_NUM`, `MAX_POSTS_PER_FEED`
 - Output: `TARGET_LANGUAGE`, `EMAIL_SUBJECT_PREFIX`, `FAILURE_LOG`
-- Azure OpenAI: `AZURE_OPENAI_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION`
+- OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` (optional)
 - SMTP: `SMTP_SERVER`, `SMTP_PORT`, `SENDER`, `SENDER_PASSWORD`, `RECEIVER`
 
 ## Email Rendering Details

@@ -5,32 +5,30 @@ import re
 from typing import List, Sequence
 
 from loguru import logger
-from openai import AzureOpenAI, BadRequestError
+from openai import OpenAI, BadRequestError
 
 
 class ContentFilterTriggeredError(Exception):
-    """Raised when Azure returns a content-filtered response."""
+    """Raised when the model returns a content-filtered response."""
 
 
-class AzureTranslator:
+class OpenAITranslator:
     def __init__(
         self,
         *,
         api_key: str,
-        endpoint: str,
-        deployment: str,
-        api_version: str,
+        base_url: str | None = None,
+        model: str,
         target_language: str,
         max_chars: int = 4000,
         max_total_chars: int = 12000,
         temperature: float | None = None,
     ):
-        self.client = AzureOpenAI(
+        self.client = OpenAI(
             api_key=api_key,
-            api_version=api_version,
-            azure_endpoint=endpoint,
+            base_url=base_url,
         )
-        self.deployment = deployment
+        self.model = model
         self.target_language = target_language
         self.max_chars = max_chars
         self.max_total_chars = max_total_chars
@@ -103,7 +101,7 @@ class AzureTranslator:
         )
         try:
             kwargs = {
-                "model": self.deployment,
+                "model": self.model,
                 "messages": [
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": chunk},
@@ -117,7 +115,7 @@ class AzureTranslator:
             content = (choice.message.content or "").strip()
             if choice.finish_reason == "content_filter" or not content:
                 raise ContentFilterTriggeredError(
-                    f"Azure returned finish_reason={choice.finish_reason!r}"
+                    f"OpenAI returned finish_reason={choice.finish_reason!r}"
                 )
             return content
         except ContentFilterTriggeredError as exc:
@@ -148,7 +146,7 @@ class AzureTranslator:
 
         try:
             kwargs = {
-                "model": self.deployment,
+                "model": self.model,
                 "messages": [
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": user_content},
@@ -162,7 +160,7 @@ class AzureTranslator:
             content = (choice.message.content or "").strip()
             if choice.finish_reason == "content_filter" or not content:
                 raise ContentFilterTriggeredError(
-                    f"Azure returned finish_reason={choice.finish_reason!r}"
+                    f"OpenAI returned finish_reason={choice.finish_reason!r}"
                 )
             summaries = self._parse_feed_summaries(content, len(prepared))
             return [self._normalize_summary(s) for s in summaries]
@@ -172,7 +170,7 @@ class AzureTranslator:
                 feed_key,
                 self._summarize_filter_reason(str(exc)),
             )
-            return ["[Translation skipped: blocked by Azure content filter]"] * len(prepared)
+            return ["[Translation skipped: blocked by content filter]"] * len(prepared)
         except BadRequestError as exc:
             if self._is_content_filter_error(exc):
                 logger.warning(
@@ -180,7 +178,7 @@ class AzureTranslator:
                     feed_key,
                     self._summarize_filter_reason(str(exc)),
                 )
-                return ["[Translation skipped: blocked by Azure content filter]"] * len(prepared)
+                return ["[Translation skipped: blocked by content filter]"] * len(prepared)
             logger.exception("Feed summary failed for {}", feed_key)
             return [f"[Translation error: {exc}]"] * len(prepared)
         except Exception as exc:
@@ -303,13 +301,13 @@ class AzureTranslator:
         )
 
         if not can_retry:
-            return "[Translation skipped: blocked by Azure content filter]"
+            return "[Translation skipped: blocked by content filter]"
 
         translations = [
             self._translate_chunk(part, _depth=depth + 1) for part in parts if part
         ]
         combined = "\n\n".join(part for part in translations if part).strip()
-        return combined or "[Translation skipped: blocked by Azure content filter]"
+        return combined or "[Translation skipped: blocked by content filter]"
 
     def _chunk_text(self, text: str) -> List[str]:
         if len(text) <= self.max_chars:
@@ -402,9 +400,9 @@ class AzureTranslator:
 
     def _summarize_filter_reason(self, reason: str) -> str:
         if not reason:
-            return "Azure content filter"
+            return "Content filter"
         if "content management policy" in reason or "ResponsibleAIPolicyViolation" in reason:
-            return "Azure Responsible AI policy violation"
+            return "Policy violation"
         if len(reason) > 180:
             return reason[:177] + "..."
         return reason

@@ -13,7 +13,7 @@ from loguru import logger
 
 from construct_email import render_email, send_email
 from feeds import FeedPost, fetch_recent_posts
-from translation import AzureTranslator
+from translation import OpenAITranslator
 
 load_dotenv(override=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -158,18 +158,17 @@ if __name__ == "__main__":
         default="Chinese (Traditional)",
         help="Language for the translated summary.",
     )
-    add_argument("--azure_openai_key", type=str, help="Azure OpenAI API key.")
-    add_argument("--azure_openai_endpoint", type=str, help="Azure OpenAI endpoint.")
+    add_argument("--openai_api_key", type=str, help="OpenAI API key.")
     add_argument(
-        "--azure_openai_deployment",
+        "--openai_base_url",
         type=str,
-        help="Azure OpenAI chat deployment name.",
+        default="",
+        help="Optional OpenAI base URL for compatible endpoints.",
     )
     add_argument(
-        "--azure_openai_api_version",
+        "--openai_model",
         type=str,
-        default="2024-02-01",
-        help="Azure OpenAI API version.",
+        help="OpenAI chat model name (e.g. gpt-4o-mini).",
     )
     add_argument("--smtp_server", type=str, help="SMTP server hostname.")
     add_argument(
@@ -199,10 +198,14 @@ if __name__ == "__main__":
     logger.remove()
     logger.add(sys.stdout, level="DEBUG" if args.debug else "INFO")
 
+    if not args.openai_base_url:
+        legacy_base = os.getenv("OPENAI_API_BASE")
+        if legacy_base:
+            args.openai_base_url = legacy_base
+
     required_fields = {
-        "azure_openai_key": args.azure_openai_key,
-        "azure_openai_endpoint": args.azure_openai_endpoint,
-        "azure_openai_deployment": args.azure_openai_deployment,
+        "openai_api_key": args.openai_api_key,
+        "openai_model": args.openai_model,
         "smtp_server": args.smtp_server,
         "smtp_port": args.smtp_port,
         "sender": args.sender,
@@ -305,11 +308,10 @@ if __name__ == "__main__":
             sys.exit(0)
 
     if posts:
-        translator = AzureTranslator(
-            api_key=args.azure_openai_key,
-            endpoint=args.azure_openai_endpoint,
-            deployment=args.azure_openai_deployment,
-            api_version=args.azure_openai_api_version,
+        translator = OpenAITranslator(
+            api_key=args.openai_api_key,
+            base_url=args.openai_base_url or None,
+            model=args.openai_model,
             target_language=args.target_language,
         )
         translations = translator.translate_batch_by_feed(

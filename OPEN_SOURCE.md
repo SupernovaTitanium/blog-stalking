@@ -8,7 +8,7 @@ This project is ready for public release under AGPLv3. Summary of what was check
 
 ## Secrets & Configuration
 - **No secrets committed**. Credentials are injected via env vars/CLI or GitHub Actions secrets:
-  - Azure OpenAI: `AZURE_OPENAI_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION`.
+  - OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` (optional).
   - SMTP: `SMTP_SERVER`, `SMTP_PORT`, `SENDER`, `SENDER_PASSWORD`, `RECEIVER`.
 - Do not commit `.env`, `.venv`, or SMTP credentials. Sample values in `docker-compose.yml` are placeholders only.
 - Optional logging path `FAILURE_LOG` writes fetch failures locally or in CI artifacts; it contains only feed URLs and error text.
@@ -28,7 +28,7 @@ This project is ready for public release under AGPLv3. Summary of what was check
 - Test workflow uploads logs as artifacts; they may contain feed URLs and error text only.
 
 ## Security Posture
-- Network calls go to public feeds and Azure OpenAI; SMTP used for delivery.
+- Network calls go to public feeds and OpenAI; SMTP used for delivery.
 - Content filter retries are bounded; translation errors are logged without secrets.
 - No file writes outside working dir except optional `FAILURE_LOG`.
 - No dynamic code execution from feeds; HTML is parsed to text before sending to the LLM.
