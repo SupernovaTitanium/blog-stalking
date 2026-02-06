@@ -4,7 +4,9 @@ import time
 import unittest
 from datetime import datetime, timezone
 
-from feeds import _extract_entry_datetime, _extract_entry_html
+from feeds import _extract_entry_datetime, _extract_entry_html, _parse_feed
+from feedparser import FeedParserDict
+from unittest.mock import patch
 
 
 class ExtractEntryHtmlTest(unittest.TestCase):
@@ -56,6 +58,45 @@ class ExtractEntryDatetimeTest(unittest.TestCase):
 
     def test_returns_none_when_no_timestamp_fields(self) -> None:
         self.assertIsNone(_extract_entry_datetime({}))
+
+
+class ParseFeedRecoveryTest(unittest.TestCase):
+    def test_recovers_from_html_and_discovers_rss(self) -> None:
+        html_payload = (
+            b"<html><head>"
+            b'<link rel="alternate" type="application/rss+xml" href="/rss.xml"/>'
+            b"</head><body>fallback</body></html>"
+        )
+
+        def fake_parse(input_data, **kwargs):
+            if isinstance(input_data, (bytes, bytearray)):
+                return FeedParserDict(
+                    bozo=True,
+                    bozo_exception=Exception("bad xml"),
+                    entries=[],
+                    feed={},
+                )
+            if input_data == "https://example.com/rss.xml":
+                return FeedParserDict(
+                    bozo=False,
+                    entries=[{"title": "ok"}],
+                    feed={"title": "Example"},
+                )
+            return FeedParserDict(
+                bozo=True,
+                bozo_exception=Exception("bad xml"),
+                entries=[],
+                feed={},
+            )
+
+        with patch("feeds.feedparser.parse", side_effect=fake_parse):
+            with patch("feeds._fetch_feed_bytes", return_value=html_payload):
+                parsed = _parse_feed(
+                    "https://example.com/feed",
+                    site_url="https://example.com",
+                )
+
+        self.assertEqual(len(parsed.entries), 1)
 
 
 if __name__ == "__main__":

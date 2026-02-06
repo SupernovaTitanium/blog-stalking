@@ -170,8 +170,8 @@
   },
   {
     "name": "OpenAI Blog",
-    "site": "https://openai.com/blog",
-    "feed": "https://openai.com/news/rss",
+    "site": "https://openai.com/news",
+    "feed": "https://openai.com/news/rss.xml",
     "owner": "OpenAI",
     "category": "Industry research lab",
     "description": "Product announcements, research updates, and safety notes from OpenAI.",

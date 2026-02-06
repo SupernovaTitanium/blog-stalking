@@ -257,7 +257,12 @@ if __name__ == "__main__":
     for cfg in feed_configs:
         url = cfg.url
         try:
-            for post in fetch_recent_posts(url, args.window_hours, per_feed_limit):
+            for post in fetch_recent_posts(
+                url,
+                args.window_hours,
+                per_feed_limit,
+                site_url=cfg.site,
+            ):
                 key = f"{post.source}:{post.id}"
                 posts_by_id[key] = post
         except Exception as exc:
