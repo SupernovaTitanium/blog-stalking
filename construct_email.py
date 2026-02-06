@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import hashlib
+import re
 from email.header import Header
 from email.mime.text import MIMEText
 from email.utils import formataddr, parseaddr
@@ -213,9 +214,32 @@ def _render_summary_text(post: FeedPost) -> str:
     return escape(flattened)
 
 
+def _is_tao_related(post: FeedPost) -> bool:
+    candidates = (
+        post.source_owner,
+        post.source_name,
+        post.source,
+        post.feed_url,
+        post.source_site,
+        post.url,
+    )
+    pattern = re.compile(r"(terence\s+tao|terrytao|@tao|/tao|\btao\b)", re.IGNORECASE)
+    for value in candidates:
+        if not value:
+            continue
+        if pattern.search(value):
+            return True
+    return False
+
+
 def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
     if not posts:
         return FRAMEWORK.format(content=EMPTY_BLOCK)
+
+    tao_posts = [post for post in posts if _is_tao_related(post)]
+    if tao_posts:
+        other_posts = [post for post in posts if not _is_tao_related(post)]
+        posts = list(tao_posts) + list(other_posts)
 
     summary_items: list[str] = []
     blocks = []
