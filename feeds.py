@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import calendar
+import re
 import time
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
+from html import unescape as html_unescape
 from typing import Any, List, Mapping, Optional
 
 import feedparser
@@ -32,6 +35,20 @@ class FeedPost:
     translation: Optional[str] = None
 
 
+_FEED_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": (
+        "application/rss+xml, application/atom+xml, application/xml, text/xml, "
+        "text/html;q=0.9, */*;q=0.8"
+    ),
+}
+
+_INVALID_XML_BYTES = re.compile(rb"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
+
+
 def _parse_datetime(struct_time: time.struct_time | None) -> datetime | None:
     if struct_time is None:
         return None
@@ -49,6 +66,45 @@ def _extract_entry_datetime(entry: Mapping[str, Any]) -> datetime | None:
         if parsed is not None:
             return parsed
     return None
+
+
+def _fetch_feed_bytes(url: str) -> bytes:
+    request = urllib.request.Request(url, headers=_FEED_HEADERS)
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return response.read()
+
+
+def _sanitize_feed_payload(payload: bytes) -> bytes:
+    if not payload:
+        return payload
+    cleaned = _INVALID_XML_BYTES.sub(b"", payload)
+    text = cleaned.decode("utf-8", errors="replace")
+    text = html_unescape(text)
+    return text.encode("utf-8")
+
+
+def _parse_feed(feed_url: str) -> feedparser.FeedParserDict:
+    feed = feedparser.parse(
+        feed_url,
+        request_headers=_FEED_HEADERS,
+        agent=_FEED_HEADERS["User-Agent"],
+    )
+    if feed.bozo and not getattr(feed, "entries", None):
+        bozo_exc = getattr(feed, "bozo_exception", None)
+        try:
+            payload = _fetch_feed_bytes(feed_url)
+            feed = feedparser.parse(_sanitize_feed_payload(payload))
+        except Exception as exc:
+            if bozo_exc:
+                raise RuntimeError(
+                    f"Failed to parse feed {feed_url}: {bozo_exc}"
+                ) from exc
+            raise RuntimeError(f"Failed to parse feed {feed_url}: {exc}") from exc
+        if feed.bozo and not getattr(feed, "entries", None):
+            raise RuntimeError(
+                f"Failed to parse feed {feed_url}: {feed.bozo_exception}"
+            )
+    return feed
 
 
 def _coerce_html_value(candidate: Any) -> str:
@@ -92,7 +148,7 @@ def fetch_recent_posts(
     limit: Optional[int] = None,
 ) -> List[FeedPost]:
     logger.debug(f"Loading feed from {feed_url}")
-    feed = feedparser.parse(feed_url)
+    feed = _parse_feed(feed_url)
     if feed.bozo:
         if getattr(feed, "entries", None):
             logger.warning(
