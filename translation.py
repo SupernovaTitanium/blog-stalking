@@ -15,6 +15,7 @@ class ContentFilterTriggeredError(Exception):
 
 class OpenAITranslator:
     INVALID_STRUCTURED_RESPONSE = "[Translation error: invalid structured response]"
+    INVALID_TRANSLATION_RESPONSE = "[Translation error: invalid structured translation]"
 
     def __init__(
         self,
@@ -99,8 +100,10 @@ class OpenAITranslator:
 
     def _translate_chunk(self, chunk: str, *, _depth: int = 0) -> str:
         prompt = (
-            "請將下列技術文章摘要成不超過 200 個中文字，保留核心概念、關鍵步驟與主要結論，"
-            "避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。"
+            f"你是專業技術翻譯員。請將使用者提供的內容完整翻譯成 {self.target_language}。"
+            "這是全文翻譯，不是摘要，不可省略段落或關鍵資訊。"
+            "請保留原始段落結構、數學符號、LaTeX、URL、Markdown 與程式碼區塊。"
+            "必須輸出 JSON 物件，格式為 {\"translation\": \"...\"}。"
         )
         try:
             kwargs = {
@@ -109,6 +112,7 @@ class OpenAITranslator:
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": chunk},
                 ],
+                "response_format": self._translation_response_format(),
             }
             if self.temperature is not None:
                 kwargs["temperature"] = self.temperature
@@ -120,16 +124,68 @@ class OpenAITranslator:
                 raise ContentFilterTriggeredError(
                     f"OpenAI returned finish_reason={choice.finish_reason!r}"
                 )
-            return content
+            translated = self._parse_translation_text(content)
+            if translated == self.INVALID_TRANSLATION_RESPONSE:
+                logger.warning(
+                    "Structured translation response parsing failed for chunk: {}",
+                    content[:160],
+                )
+            return translated
         except ContentFilterTriggeredError as exc:
             return self._handle_content_filter(chunk, _depth, str(exc))
         except BadRequestError as exc:
             if self._is_content_filter_error(exc):
                 return self._handle_content_filter(chunk, _depth, str(exc))
+            if self._is_response_format_error(exc):
+                return self._translate_chunk_json_object(chunk, _depth=_depth)
             logger.exception("Translation chunk failed")
             return f"[Translation error: {exc}]"
         except Exception as exc:
             logger.exception("Translation chunk failed")
+            return f"[Translation error: {exc}]"
+
+    def _translate_chunk_json_object(self, chunk: str, *, _depth: int = 0) -> str:
+        prompt = (
+            f"你是專業技術翻譯員。請將使用者提供的內容完整翻譯成 {self.target_language}。"
+            "這是全文翻譯，不是摘要，不可省略段落或關鍵資訊。"
+            "請保留原始段落結構、數學符號、LaTeX、URL、Markdown 與程式碼區塊。"
+            "必須輸出 JSON 物件，格式為 {\"translation\": \"...\"}。"
+        )
+        try:
+            kwargs = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": chunk},
+                ],
+                "response_format": {"type": "json_object"},
+            }
+            if self.temperature is not None:
+                kwargs["temperature"] = self.temperature
+
+            response = self.client.chat.completions.create(**kwargs)
+            choice = response.choices[0]
+            content = (choice.message.content or "").strip()
+            if choice.finish_reason == "content_filter" or not content:
+                raise ContentFilterTriggeredError(
+                    f"OpenAI returned finish_reason={choice.finish_reason!r}"
+                )
+            translated = self._parse_translation_text(content)
+            if translated == self.INVALID_TRANSLATION_RESPONSE:
+                logger.warning(
+                    "Structured translation (json_object) parsing failed for chunk: {}",
+                    content[:160],
+                )
+            return translated
+        except ContentFilterTriggeredError as exc:
+            return self._handle_content_filter(chunk, _depth, str(exc))
+        except BadRequestError as exc:
+            if self._is_content_filter_error(exc):
+                return self._handle_content_filter(chunk, _depth, str(exc))
+            logger.exception("Translation chunk failed (json_object fallback)")
+            return f"[Translation error: {exc}]"
+        except Exception as exc:
+            logger.exception("Translation chunk failed (json_object fallback)")
             return f"[Translation error: {exc}]"
 
     def _translate_feed_once(self, feed_key: str, texts: Sequence[str]) -> List[str]:
@@ -331,6 +387,41 @@ class OpenAITranslator:
                 },
             },
         }
+
+    def _translation_response_format(self) -> dict[str, Any]:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "post_translation",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "translation": {"type": "string"},
+                    },
+                    "required": ["translation"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+
+    def _parse_translation_text(self, raw: str) -> str:
+        raw = (raw or "").strip()
+        if not raw:
+            return self.INVALID_TRANSLATION_RESPONSE
+
+        parsed: Any = None
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            parsed = None
+
+        if isinstance(parsed, dict):
+            translation = parsed.get("translation")
+            if isinstance(translation, str) and translation.strip():
+                return translation.strip()
+
+        return self.INVALID_TRANSLATION_RESPONSE
 
     def _extract_bracket_json(self, raw: str):
         match = re.search(r'\[.*\]', raw, flags=re.DOTALL)

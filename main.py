@@ -319,10 +319,7 @@ if __name__ == "__main__":
             model=args.openai_model,
             target_language=args.target_language,
         )
-        translations = translator.translate_batch_by_feed(
-            [p.content_text for p in posts],
-            [p.feed_url for p in posts],
-        )
+        translations = translator.translate_batch([p.content_text for p in posts])
         for post, translation in zip(posts, translations, strict=False):
             post.translation = translation
 

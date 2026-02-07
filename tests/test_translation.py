@@ -84,6 +84,46 @@ class FeedTranslationJsonSchemaTest(unittest.TestCase):
             ],
         )
 
+    def test_translate_batch_uses_structured_translation_json(self) -> None:
+        translator = self._build_translator()
+        mock_response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content='{"translation":"完整中文翻譯"}'),
+                )
+            ]
+        )
+        create_mock = MagicMock(return_value=mock_response)
+        translator.client.chat.completions.create = create_mock
+
+        result = translator.translate_batch(["source text"])
+
+        self.assertEqual(result, ["完整中文翻譯"])
+        response_format = create_mock.call_args.kwargs.get("response_format")
+        self.assertIsInstance(response_format, dict)
+        self.assertEqual(response_format.get("type"), "json_schema")
+        self.assertEqual(
+            response_format.get("json_schema", {}).get("name"),
+            "post_translation",
+        )
+
+    def test_translate_batch_invalid_json_returns_marker(self) -> None:
+        translator = self._build_translator()
+        mock_response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content="invalid-json-output"),
+                )
+            ]
+        )
+        translator.client.chat.completions.create = MagicMock(return_value=mock_response)
+
+        result = translator.translate_batch(["source text"])
+
+        self.assertEqual(result, [OpenAITranslator.INVALID_TRANSLATION_RESPONSE])
+
 
 if __name__ == "__main__":
     unittest.main()
