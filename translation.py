@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any
 from typing import List, Sequence
 
 from loguru import logger
@@ -13,6 +14,8 @@ class ContentFilterTriggeredError(Exception):
 
 
 class OpenAITranslator:
+    INVALID_STRUCTURED_RESPONSE = "[Translation error: invalid structured response]"
+
     def __init__(
         self,
         *,
@@ -135,9 +138,9 @@ class OpenAITranslator:
             return []
 
         prompt = (
-            "請將下列技術文章摘要成不超過 200 個中文字，保留核心概念、關鍵步驟與主要結論，"
+            f"請將下列技術文章摘要成不超過 200 個{self.target_language}字詞，保留核心概念、關鍵步驟與主要結論，"
             "避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。"
-            "請輸出 JSON 陣列，元素為字串，順序需與輸入文章一致。"
+            "必須輸出 JSON 物件，格式為 {\"summaries\": [\"...\", \"...\"]}，順序需與輸入文章一致。"
         )
         user_parts = [f"【Feed】{feed_key}", "【輸入】"]
         for idx, text in enumerate(prepared, 1):
@@ -151,6 +154,7 @@ class OpenAITranslator:
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": user_content},
                 ],
+                "response_format": self._feed_response_format(),
             }
             if self.temperature is not None:
                 kwargs["temperature"] = self.temperature
@@ -179,10 +183,73 @@ class OpenAITranslator:
                     self._summarize_filter_reason(str(exc)),
                 )
                 return ["[Translation skipped: blocked by content filter]"] * len(prepared)
+            if self._is_response_format_error(exc):
+                logger.warning(
+                    "Model {} does not support json_schema response format; falling back to json_object.",
+                    self.model,
+                )
+                return self._translate_feed_once_json_object(feed_key, prepared)
             logger.exception("Feed summary failed for {}", feed_key)
             return [f"[Translation error: {exc}]"] * len(prepared)
         except Exception as exc:
             logger.exception("Feed summary failed for {}", feed_key)
+            return [f"[Translation error: {exc}]"] * len(prepared)
+
+    def _translate_feed_once_json_object(
+        self,
+        feed_key: str,
+        prepared: Sequence[str],
+    ) -> List[str]:
+        prompt = (
+            f"請將下列技術文章摘要成不超過 200 個{self.target_language}字詞，保留核心概念、關鍵步驟與主要結論，"
+            "避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。"
+            "必須輸出 JSON 物件，格式為 {\"summaries\": [\"...\", \"...\"]}，順序需與輸入文章一致。"
+        )
+        user_parts = [f"【Feed】{feed_key}", "【輸入】"]
+        for idx, text in enumerate(prepared, 1):
+            user_parts.append(f"【文章 {idx}】\n{text}")
+        user_content = "\n\n".join(user_parts)
+
+        try:
+            kwargs = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                "response_format": {"type": "json_object"},
+            }
+            if self.temperature is not None:
+                kwargs["temperature"] = self.temperature
+
+            response = self.client.chat.completions.create(**kwargs)
+            choice = response.choices[0]
+            content = (choice.message.content or "").strip()
+            if choice.finish_reason == "content_filter" or not content:
+                raise ContentFilterTriggeredError(
+                    f"OpenAI returned finish_reason={choice.finish_reason!r}"
+                )
+            summaries = self._parse_feed_summaries(content, len(prepared))
+            return [self._normalize_summary(s) for s in summaries]
+        except ContentFilterTriggeredError as exc:
+            logger.warning(
+                "Content filter blocked feed summary for {}: {}",
+                feed_key,
+                self._summarize_filter_reason(str(exc)),
+            )
+            return ["[Translation skipped: blocked by content filter]"] * len(prepared)
+        except BadRequestError as exc:
+            if self._is_content_filter_error(exc):
+                logger.warning(
+                    "Content filter blocked feed summary for {}: {}",
+                    feed_key,
+                    self._summarize_filter_reason(str(exc)),
+                )
+                return ["[Translation skipped: blocked by content filter]"] * len(prepared)
+            logger.exception("Feed summary failed for {} (json_object fallback)", feed_key)
+            return [f"[Translation error: {exc}]"] * len(prepared)
+        except Exception as exc:
+            logger.exception("Feed summary failed for {} (json_object fallback)", feed_key)
             return [f"[Translation error: {exc}]"] * len(prepared)
 
     def _prepare_texts_for_feed(self, texts: Sequence[str]) -> List[str]:
@@ -210,9 +277,9 @@ class OpenAITranslator:
     def _parse_feed_summaries(self, raw: str, expected: int) -> List[str]:
         raw = (raw or "").strip()
         if not raw:
-            return [""] * expected
+            return [self.INVALID_STRUCTURED_RESPONSE] * expected
 
-        parsed = None
+        parsed: Any = None
         try:
             parsed = json.loads(raw)
         except Exception:
@@ -222,33 +289,48 @@ class OpenAITranslator:
             parsed = self._extract_bracket_json(raw)
 
         summaries: List[str] = []
-        if isinstance(parsed, list):
-            for item in parsed:
-                if isinstance(item, str):
-                    summaries.append(item)
-                elif isinstance(item, dict):
-                    for key in ("summary", "text", "content"):
-                        if isinstance(item.get(key), str):
-                            summaries.append(item[key])
-                            break
-        elif isinstance(parsed, dict):
-            for key in ("summaries", "items", "results"):
-                if isinstance(parsed.get(key), list):
-                    summaries = [
-                        str(item) if isinstance(item, str) else str(item.get("summary", ""))
-                        for item in parsed[key]
-                    ]
-                    break
+        if isinstance(parsed, dict) and isinstance(parsed.get("summaries"), list):
+            summaries = [
+                str(item).strip()
+                for item in parsed["summaries"]
+                if isinstance(item, str) and str(item).strip()
+            ]
+        elif isinstance(parsed, list):
+            summaries = [
+                str(item).strip()
+                for item in parsed
+                if isinstance(item, str) and str(item).strip()
+            ]
 
         if not summaries:
-            summaries = self._parse_numbered_list(raw)
-
-        if not summaries:
-            return [""] * expected
+            logger.warning("Structured translation response parsing failed: {}", raw[:160])
+            return [self.INVALID_STRUCTURED_RESPONSE] * expected
 
         if len(summaries) < expected:
-            summaries.extend([""] * (expected - len(summaries)))
+            summaries.extend(
+                [self.INVALID_STRUCTURED_RESPONSE] * (expected - len(summaries))
+            )
         return summaries[:expected]
+
+    def _feed_response_format(self) -> dict[str, Any]:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "feed_summaries",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "summaries": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        }
+                    },
+                    "required": ["summaries"],
+                    "additionalProperties": False,
+                },
+            },
+        }
 
     def _extract_bracket_json(self, raw: str):
         match = re.search(r'\[.*\]', raw, flags=re.DOTALL)
@@ -397,6 +479,28 @@ class OpenAITranslator:
             if "content_filter" in code or "responsibleaipolicyviolation" in inner_code:
                 return True
         return "content_filter" in str(exc).lower()
+
+    def _is_response_format_error(self, exc: Exception) -> bool:
+        if not isinstance(exc, BadRequestError):
+            return False
+        try:
+            data = exc.response.json() if exc.response else None
+        except Exception:
+            data = None
+
+        texts: list[str] = [str(exc)]
+        if isinstance(data, dict):
+            error = data.get("error") or {}
+            texts.append(str(error.get("code") or ""))
+            texts.append(str(error.get("message") or ""))
+            texts.append(str(error.get("type") or ""))
+
+        haystack = " ".join(texts).lower()
+        return (
+            "response_format" in haystack
+            or "json_schema" in haystack
+            or "unsupported" in haystack
+        )
 
     def _summarize_filter_reason(self, reason: str) -> str:
         if not reason:
