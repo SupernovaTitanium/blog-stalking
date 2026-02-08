@@ -34,6 +34,7 @@ class FeedPost:
     source_description: Optional[str] = None
     source_tags: Optional[List[str]] = None
     source_accent: Optional[str] = None
+    summary: Optional[str] = None
     translation: Optional[str] = None
 
 

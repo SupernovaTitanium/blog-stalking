@@ -346,17 +346,27 @@ class OpenAITranslator:
 
         summaries: List[str] = []
         if isinstance(parsed, dict) and isinstance(parsed.get("summaries"), list):
-            summaries = [
-                str(item).strip()
-                for item in parsed["summaries"]
-                if isinstance(item, str) and str(item).strip()
-            ]
+            for item in parsed["summaries"]:
+                if not isinstance(item, str):
+                    continue
+                summary = item.strip()
+                if not summary:
+                    continue
+                if not self._is_expected_language(summary):
+                    summaries.append(self.INVALID_STRUCTURED_RESPONSE)
+                    continue
+                summaries.append(summary)
         elif isinstance(parsed, list):
-            summaries = [
-                str(item).strip()
-                for item in parsed
-                if isinstance(item, str) and str(item).strip()
-            ]
+            for item in parsed:
+                if not isinstance(item, str):
+                    continue
+                summary = item.strip()
+                if not summary:
+                    continue
+                if not self._is_expected_language(summary):
+                    summaries.append(self.INVALID_STRUCTURED_RESPONSE)
+                    continue
+                summaries.append(summary)
 
         if not summaries:
             logger.warning("Structured translation response parsing failed: {}", raw[:160])
@@ -419,9 +429,25 @@ class OpenAITranslator:
         if isinstance(parsed, dict):
             translation = parsed.get("translation")
             if isinstance(translation, str) and translation.strip():
-                return translation.strip()
+                value = translation.strip()
+                if not self._is_expected_language(value):
+                    return self.INVALID_TRANSLATION_RESPONSE
+                return value
 
         return self.INVALID_TRANSLATION_RESPONSE
+
+    def _is_expected_language(self, text: str) -> bool:
+        if not text:
+            return False
+        target = (self.target_language or "").lower()
+        if "chinese" not in target and "中文" not in target:
+            return True
+        if len(text.strip()) <= 24:
+            return True
+
+        cjk_count = len(re.findall(r"[\u4e00-\u9fff]", text))
+        latin_count = len(re.findall(r"[A-Za-z]", text))
+        return cjk_count >= 8 or (cjk_count >= 4 and cjk_count * 3 >= latin_count)
 
     def _extract_bracket_json(self, raw: str):
         match = re.search(r'\[.*\]', raw, flags=re.DOTALL)

@@ -124,6 +124,25 @@ class FeedTranslationJsonSchemaTest(unittest.TestCase):
 
         self.assertEqual(result, [OpenAITranslator.INVALID_TRANSLATION_RESPONSE])
 
+    def test_parse_translation_text_rejects_long_english_for_chinese_target(self) -> None:
+        translator = self._build_translator()
+
+        result = translator._parse_translation_text(
+            '{"translation":"This is a long English sentence that should not pass for a Chinese translation output."}'
+        )
+
+        self.assertEqual(result, OpenAITranslator.INVALID_TRANSLATION_RESPONSE)
+
+    def test_parse_feed_summaries_rejects_long_english_for_chinese_target(self) -> None:
+        translator = self._build_translator()
+
+        result = translator._parse_feed_summaries(
+            '{"summaries":["This is a long English summary that should be rejected for Chinese target language."]}',
+            expected=1,
+        )
+
+        self.assertEqual(result, [OpenAITranslator.INVALID_STRUCTURED_RESPONSE])
+
 
 if __name__ == "__main__":
     unittest.main()
