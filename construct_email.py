@@ -204,14 +204,12 @@ def _anchor_id(post: FeedPost) -> str:
 
 def _render_summary_text(post: FeedPost) -> str:
     summary = (post.summary or "").strip()
-    translated = (post.translation or "").strip()
-    candidates = summary or translated
-    if not candidates:
+    if not summary:
         return "<em>尚未產生中文摘要</em>"
-    if candidates.startswith("[Translation"):
+    if summary.startswith("[Translation"):
         return "<em>翻譯失敗，請查看詳細區塊的錯誤訊息</em>"
     flattened = " ".join(
-        line.strip() for line in candidates.splitlines() if line.strip()
+        line.strip() for line in summary.splitlines() if line.strip()
     ).strip()
     if not flattened:
         return "<em>尚未產生中文摘要</em>"

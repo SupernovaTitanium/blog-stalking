@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
+import re
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -328,6 +329,38 @@ if __name__ == "__main__":
             post.summary = summary
         for post, translation in zip(posts, translations, strict=False):
             post.translation = translation
+
+        def _is_chinese_like(text: str) -> bool:
+            cjk_count = len(re.findall(r"[\u4e00-\u9fff]", text))
+            latin_count = len(re.findall(r"[A-Za-z]", text))
+            return cjk_count >= 8 or (cjk_count >= 4 and cjk_count * 3 >= latin_count)
+
+        def _summary_from_translation(text: str | None) -> str | None:
+            value = (text or "").strip()
+            if not value or value.startswith("[Translation"):
+                return None
+            flattened = " ".join(
+                line.strip() for line in value.splitlines() if line.strip()
+            ).strip()
+            if not flattened:
+                return None
+            if not _is_chinese_like(flattened):
+                return None
+            if len(flattened) > 200:
+                flattened = flattened[:200].rstrip() + "..."
+            return flattened
+
+        for post in posts:
+            current_summary = (post.summary or "").strip()
+            if (
+                current_summary
+                and not current_summary.startswith("[Translation")
+                and _is_chinese_like(current_summary)
+            ):
+                continue
+            fallback_summary = _summary_from_translation(post.translation)
+            if fallback_summary:
+                post.summary = fallback_summary
 
     html = render_email(posts, args.target_language)
     subject = f"{args.email_subject_prefix} {dt.datetime.now().strftime('%Y-%m-%d')}"
