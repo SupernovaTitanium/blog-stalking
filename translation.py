@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import time
+import urllib.request
 from typing import Any
 from typing import List, Sequence
 
@@ -13,9 +15,30 @@ class ContentFilterTriggeredError(Exception):
     """Raised when the model returns a content-filtered response."""
 
 
+class _MinuteRateLimiter:
+    def __init__(self, rpm: int | None):
+        self.rpm = max(1, int(rpm or 10))
+        self._timestamps: list[float] = []
+
+    def wait(self) -> None:
+        now = time.monotonic()
+        window_start = now - 60
+        self._timestamps = [stamp for stamp in self._timestamps if stamp > window_start]
+        if len(self._timestamps) >= self.rpm:
+            sleep_for = 60 - (now - self._timestamps[0])
+            if sleep_for > 0:
+                logger.info("NVIDIA rate limit reached; sleeping {:.1f}s.", sleep_for)
+                time.sleep(sleep_for)
+            now = time.monotonic()
+            window_start = now - 60
+            self._timestamps = [stamp for stamp in self._timestamps if stamp > window_start]
+        self._timestamps.append(time.monotonic())
+
+
 class OpenAITranslator:
     INVALID_STRUCTURED_RESPONSE = "[Translation error: invalid structured response]"
     INVALID_TRANSLATION_RESPONSE = "[Translation error: invalid structured translation]"
+    NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
     def __init__(
         self,
@@ -27,17 +50,97 @@ class OpenAITranslator:
         max_chars: int = 4000,
         max_total_chars: int = 12000,
         temperature: float | None = None,
+        provider: str = "openai",
+        nvidia_api_url: str | None = None,
+        nvidia_rpm: int = 10,
+        nvidia_max_tokens: int = 16384,
+        nvidia_top_p: float = 0.95,
     ):
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-        )
+        self.provider = (provider or "openai").lower()
+        self.client = None
+        if self.provider == "openai":
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+            )
+        elif self.provider != "nvidia":
+            raise ValueError(f"Unsupported AI provider: {provider}")
+        self.api_key = api_key
+        self.nvidia_api_url = nvidia_api_url or self.NVIDIA_API_URL
+        self.nvidia_max_tokens = int(nvidia_max_tokens)
+        self.nvidia_top_p = float(nvidia_top_p)
+        self._nvidia_limiter = _MinuteRateLimiter(nvidia_rpm)
         self.model = model
         self.target_language = target_language
         self.max_chars = max_chars
         self.max_total_chars = max_total_chars
         self.temperature = temperature
         self._max_filter_depth = 3
+
+    def _chat_completion_content(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        response_format: dict[str, Any] | None = None,
+    ) -> tuple[str, str | None]:
+        if self.provider == "nvidia":
+            return self._nvidia_streaming_chat_completion(messages=messages)
+
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+        }
+        if response_format is not None:
+            kwargs["response_format"] = response_format
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
+
+        response = self.client.chat.completions.create(**kwargs)
+        choice = response.choices[0]
+        return (choice.message.content or "").strip(), choice.finish_reason
+
+    def _nvidia_streaming_chat_completion(
+        self,
+        *,
+        messages: list[dict[str, str]],
+    ) -> tuple[str, str | None]:
+        self._nvidia_limiter.wait()
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 1 if self.temperature is None else self.temperature,
+            "max_tokens": self.nvidia_max_tokens,
+            "top_p": self.nvidia_top_p,
+            "stream": True,
+        }
+        request = urllib.request.Request(
+            self.nvidia_api_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            },
+            method="POST",
+        )
+
+        parts: list[str] = []
+        finish_reason: str | None = None
+        with urllib.request.urlopen(request, timeout=240) as response:
+            for raw in response:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                chunk = json.loads(data)
+                choice = (chunk.get("choices") or [{}])[0]
+                finish_reason = choice.get("finish_reason") or finish_reason
+                text = (choice.get("delta") or {}).get("content")
+                if text:
+                    parts.append(text)
+        return "".join(parts).strip(), finish_reason
 
     def translate_batch_by_feed(
         self,
@@ -106,23 +209,16 @@ class OpenAITranslator:
             "必須輸出 JSON 物件，格式為 {\"translation\": \"...\"}。"
         )
         try:
-            kwargs = {
-                "model": self.model,
-                "messages": [
+            content, finish_reason = self._chat_completion_content(
+                messages=[
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": chunk},
                 ],
-                "response_format": self._translation_response_format(),
-            }
-            if self.temperature is not None:
-                kwargs["temperature"] = self.temperature
-
-            response = self.client.chat.completions.create(**kwargs)
-            choice = response.choices[0]
-            content = (choice.message.content or "").strip()
-            if choice.finish_reason == "content_filter" or not content:
+                response_format=self._translation_response_format(),
+            )
+            if finish_reason == "content_filter" or not content:
                 raise ContentFilterTriggeredError(
-                    f"OpenAI returned finish_reason={choice.finish_reason!r}"
+                    f"Model returned finish_reason={finish_reason!r}"
                 )
             translated = self._parse_translation_text(content)
             if translated == self.INVALID_TRANSLATION_RESPONSE:
@@ -152,23 +248,16 @@ class OpenAITranslator:
             "必須輸出 JSON 物件，格式為 {\"translation\": \"...\"}。"
         )
         try:
-            kwargs = {
-                "model": self.model,
-                "messages": [
+            content, finish_reason = self._chat_completion_content(
+                messages=[
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": chunk},
                 ],
-                "response_format": {"type": "json_object"},
-            }
-            if self.temperature is not None:
-                kwargs["temperature"] = self.temperature
-
-            response = self.client.chat.completions.create(**kwargs)
-            choice = response.choices[0]
-            content = (choice.message.content or "").strip()
-            if choice.finish_reason == "content_filter" or not content:
+                response_format={"type": "json_object"},
+            )
+            if finish_reason == "content_filter" or not content:
                 raise ContentFilterTriggeredError(
-                    f"OpenAI returned finish_reason={choice.finish_reason!r}"
+                    f"Model returned finish_reason={finish_reason!r}"
                 )
             translated = self._parse_translation_text(content)
             if translated == self.INVALID_TRANSLATION_RESPONSE:
@@ -204,23 +293,16 @@ class OpenAITranslator:
         user_content = "\n\n".join(user_parts)
 
         try:
-            kwargs = {
-                "model": self.model,
-                "messages": [
+            content, finish_reason = self._chat_completion_content(
+                messages=[
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": user_content},
                 ],
-                "response_format": self._feed_response_format(),
-            }
-            if self.temperature is not None:
-                kwargs["temperature"] = self.temperature
-
-            response = self.client.chat.completions.create(**kwargs)
-            choice = response.choices[0]
-            content = (choice.message.content or "").strip()
-            if choice.finish_reason == "content_filter" or not content:
+                response_format=self._feed_response_format(),
+            )
+            if finish_reason == "content_filter" or not content:
                 raise ContentFilterTriggeredError(
-                    f"OpenAI returned finish_reason={choice.finish_reason!r}"
+                    f"Model returned finish_reason={finish_reason!r}"
                 )
             summaries = self._parse_feed_summaries(content, len(prepared))
             return [self._normalize_summary(s) for s in summaries]
@@ -267,23 +349,16 @@ class OpenAITranslator:
         user_content = "\n\n".join(user_parts)
 
         try:
-            kwargs = {
-                "model": self.model,
-                "messages": [
+            content, finish_reason = self._chat_completion_content(
+                messages=[
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": user_content},
                 ],
-                "response_format": {"type": "json_object"},
-            }
-            if self.temperature is not None:
-                kwargs["temperature"] = self.temperature
-
-            response = self.client.chat.completions.create(**kwargs)
-            choice = response.choices[0]
-            content = (choice.message.content or "").strip()
-            if choice.finish_reason == "content_filter" or not content:
+                response_format={"type": "json_object"},
+            )
+            if finish_reason == "content_filter" or not content:
                 raise ContentFilterTriggeredError(
-                    f"OpenAI returned finish_reason={choice.finish_reason!r}"
+                    f"Model returned finish_reason={finish_reason!r}"
                 )
             summaries = self._parse_feed_summaries(content, len(prepared))
             return [self._normalize_summary(s) for s in summaries]
@@ -342,7 +417,7 @@ class OpenAITranslator:
             parsed = None
 
         if parsed is None:
-            parsed = self._extract_bracket_json(raw)
+            parsed = self._extract_object_json(raw) or self._extract_bracket_json(raw)
 
         summaries: List[str] = []
         if isinstance(parsed, dict) and isinstance(parsed.get("summaries"), list):
@@ -426,6 +501,9 @@ class OpenAITranslator:
         except Exception:
             parsed = None
 
+        if parsed is None:
+            parsed = self._extract_object_json(raw)
+
         if isinstance(parsed, dict):
             translation = parsed.get("translation")
             if isinstance(translation, str) and translation.strip():
@@ -435,6 +513,16 @@ class OpenAITranslator:
                 return value
 
         return self.INVALID_TRANSLATION_RESPONSE
+
+    def _extract_object_json(self, raw: str):
+        match = re.search(r'\{.*\}', raw, flags=re.DOTALL)
+        if not match:
+            return None
+        snippet = match.group(0)
+        try:
+            return json.loads(snippet)
+        except Exception:
+            return None
 
     def _is_expected_language(self, text: str) -> bool:
         if not text:

@@ -14,7 +14,7 @@
 ---
 
 ## Overview
-Blog Pusher watches a curated list of research and engineering blogs, translates every new post with OpenAI, and emails the digest to you once per day. It started life as a Tao feed watcher, but now it operates as a general-purpose blog radar: drop any feed into `feeds/blogs.json`, deploy the workflow, and the system will keep your inbox synced with multilingual summaries.
+Blog Pusher watches a curated list of research and engineering blogs, translates every new post with an LLM provider, and emails the digest to you once per day. It started life as a Tao feed watcher, but now it operates as a general-purpose blog radar: drop any feed into `feeds/blogs.json`, deploy the workflow, and the system will keep your inbox synced with multilingual summaries.
 
 ## Features
 - Monitor dozens of RSS/Atom feeds defined in `feeds/blogs.json` plus any ad-hoc URLs you pass through `FEED_URL` / `BLOG_FEED_URL`.
@@ -27,7 +27,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 ## How It Works
 1. The `Blog Pusher` workflow installs dependencies with `uv` and runs `main.py`.
 2. `main.py` loads feed URLs from `feeds/blogs.json` (plus any overrides), fetches items from the last `WINDOW_HOURS`, and deduplicates them.
-3. Each post is summarized in Chinese (target language configurable) with OpenAI (`translation.py`, prompt: “請將下列技術文章摘要成不超過 200 個中文字，保留核心概念、關鍵步驟與主要結論，避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。”) and rendered into an email via `construct_email.py`. The quick summary section shows the full LLM output—no additional truncation.
+3. Each post is summarized in Chinese (target language configurable) with the configured LLM provider (`translation.py`, prompt: “請將下列技術文章摘要成不超過 200 個中文字，保留核心概念、關鍵步驟與主要結論，避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。”) and rendered into an email via `construct_email.py`. The quick summary section shows the full LLM output—no additional truncation.
 4. The digest is sent through your SMTP server with the configured sender credentials.
 
 ## Deploy on GitHub
@@ -36,8 +36,9 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 
 | Secret | Required | Description | Example |
 | :--- | :---: | :--- | :--- |
-| `OPENAI_API_KEY` | ✅ | API key for your OpenAI account. | `sk-...` |
-| `OPENAI_MODEL` | ✅ | Chat/completions model name. | `gpt-4o-mini` |
+| `NVIDIA_API_KEY` | ✅ for NVIDIA | API key for NVIDIA hosted chat completions. | `nvapi-...` |
+| `OPENAI_API_KEY` | ✅ if NVIDIA is not set | API key for your OpenAI account. | `sk-...` |
+| `OPENAI_MODEL` | ✅ if NVIDIA is not set | Chat/completions model name. | `gpt-4o-mini` |
 | `OPENAI_BASE_URL` | ⬜ | Optional base URL for OpenAI-compatible endpoints. | `https://api.openai.com/v1` |
 | `SMTP_SERVER` | ✅ | Hostname of the SMTP server that sends email. | `smtp.gmail.com` |
 | `SMTP_PORT` | ✅ | Port for the SMTP server (supports STARTTLS and SMTPS fallback). | `587` |
@@ -59,14 +60,17 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | `TARGET_LANGUAGE` | `Chinese (Traditional)` | Translation language. |
 | `EMAIL_SUBJECT_PREFIX` | `Blog Pusher Digest` | Prefix for the email subject line. |
 | `FAILURE_LOG` | *(blank)* | Optional path to write feed fetch failures (useful for debugging/test runs). |
+| `NVIDIA_MODEL` | `z-ai/glm-5.2` | NVIDIA chat model used when `NVIDIA_API_KEY` is set. |
+| `NVIDIA_API_URL` | `https://integrate.api.nvidia.com/v1/chat/completions` | NVIDIA chat completions endpoint. |
+| `NVIDIA_RPM` | `10` | Maximum NVIDIA chat completion requests per minute. |
 
 4. **Trigger the workflow** from the Actions tab or wait for the nightly schedule (22:00 UTC). Check the run logs for translation details and SMTP delivery results.
 
 ## Local Development
 ```bash
 uv sync
-export OPENAI_API_KEY=...
-export OPENAI_MODEL=...
+export NVIDIA_API_KEY=...
+export NVIDIA_MODEL=z-ai/glm-5.2
 # ...export the remaining SMTP + workflow variables...
 uv run main.py --debug
 ```

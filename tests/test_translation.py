@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import sys
 from types import SimpleNamespace
 import types
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Allow local unit tests to run without installing runtime deps.
 fake_loguru = types.ModuleType("loguru")
@@ -142,6 +143,44 @@ class FeedTranslationJsonSchemaTest(unittest.TestCase):
         )
 
         self.assertEqual(result, [OpenAITranslator.INVALID_STRUCTURED_RESPONSE])
+
+    def test_nvidia_provider_uses_streaming_payload(self) -> None:
+        translator = OpenAITranslator(
+            api_key="nv-key",
+            provider="nvidia",
+            model="z-ai/glm-5.2",
+            target_language="Chinese (Traditional)",
+        )
+        translator._nvidia_limiter.wait = MagicMock()
+
+        class FakeResponse:
+            def __enter__(self):
+                return iter(
+                    [
+                        (
+                            'data: {"choices":[{"delta":{"content":"{\\"translation\\":'
+                            '\\"完整中文翻譯\\"}"}}]}\n'
+                        ).encode("utf-8"),
+                        b"data: [DONE]\n",
+                    ]
+                )
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+        with patch("translation.urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            result = translator.translate_batch(["source text"])
+
+        self.assertEqual(result, ["完整中文翻譯"])
+        request = urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(payload["model"], "z-ai/glm-5.2")
+        self.assertTrue(payload["stream"])
+        self.assertEqual(payload["temperature"], 1)
+        self.assertEqual(payload["max_tokens"], 16384)
+        self.assertEqual(payload["top_p"], 0.95)
+        self.assertEqual(request.get_header("Authorization"), "Bearer nv-key")
+        self.assertEqual(request.get_header("Accept"), "text/event-stream")
 
 
 if __name__ == "__main__":

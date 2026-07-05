@@ -171,6 +171,25 @@ if __name__ == "__main__":
         type=str,
         help="OpenAI chat model name (e.g. gpt-4o-mini).",
     )
+    add_argument("--nvidia_api_key", type=str, help="NVIDIA API key.")
+    add_argument(
+        "--nvidia_api_url",
+        type=str,
+        default=OpenAITranslator.NVIDIA_API_URL,
+        help="NVIDIA chat completions endpoint.",
+    )
+    add_argument(
+        "--nvidia_model",
+        type=str,
+        default="z-ai/glm-5.2",
+        help="NVIDIA chat model name.",
+    )
+    add_argument(
+        "--nvidia_rpm",
+        type=int,
+        default=10,
+        help="Maximum NVIDIA chat completion requests per minute.",
+    )
     add_argument("--smtp_server", type=str, help="SMTP server hostname.")
     add_argument(
         "--smtp_port",
@@ -204,20 +223,34 @@ if __name__ == "__main__":
         if legacy_base:
             args.openai_base_url = legacy_base
 
+    use_nvidia = bool(args.nvidia_api_key)
     required_fields = {
-        "openai_api_key": args.openai_api_key,
-        "openai_model": args.openai_model,
         "smtp_server": args.smtp_server,
         "smtp_port": args.smtp_port,
         "sender": args.sender,
         "sender_password": args.sender_password,
         "receiver": args.receiver,
     }
+    if use_nvidia:
+        required_fields.update(
+            {
+                "nvidia_api_key": args.nvidia_api_key,
+                "nvidia_model": args.nvidia_model,
+            }
+        )
+    else:
+        required_fields.update(
+            {
+                "openai_api_key": args.openai_api_key,
+                "openai_model": args.openai_model,
+            }
+        )
     missing = [name for name, value in required_fields.items() if not value]
     if missing:
         raise ValueError(
             f"Missing required configuration: {', '.join(missing)}. "
-            "Use CLI flags or environment variables."
+            "Use CLI flags or environment variables. Set NVIDIA_API_KEY to use NVIDIA, "
+            "or set OPENAI_API_KEY and OPENAI_MODEL to use OpenAI."
         )
 
     limit = None if args.max_post_num == -1 else args.max_post_num
@@ -314,11 +347,22 @@ if __name__ == "__main__":
             sys.exit(0)
 
     if posts:
+        if use_nvidia:
+            logger.info(
+                "Using NVIDIA chat completions model {} with rpm limit {}.",
+                args.nvidia_model,
+                args.nvidia_rpm,
+            )
+        else:
+            logger.info("Using OpenAI-compatible chat completions model {}.", args.openai_model)
         translator = OpenAITranslator(
-            api_key=args.openai_api_key,
+            api_key=args.nvidia_api_key if use_nvidia else args.openai_api_key,
             base_url=args.openai_base_url or None,
-            model=args.openai_model,
+            model=args.nvidia_model if use_nvidia else args.openai_model,
             target_language=args.target_language,
+            provider="nvidia" if use_nvidia else "openai",
+            nvidia_api_url=args.nvidia_api_url,
+            nvidia_rpm=args.nvidia_rpm,
         )
         summaries = translator.translate_batch_by_feed(
             [p.content_text for p in posts],
