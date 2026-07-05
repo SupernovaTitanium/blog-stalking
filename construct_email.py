@@ -14,6 +14,72 @@ from loguru import logger
 
 from feeds import FeedPost
 
+_INLINE_MATH_STYLE = (
+    "font-family:'Cambria Math','STIX Two Math','Times New Roman',serif;"
+    "font-size:1.02em; white-space:nowrap; background:#fff; padding:0 2px;"
+)
+_DISPLAY_MATH_STYLE = (
+    "font-family:'Cambria Math','STIX Two Math','Times New Roman',serif;"
+    "font-size:15px; line-height:1.5; margin:8px 0; padding:8px 10px;"
+    "background:#fff; border-left:3px solid #c9d6e3; white-space:pre-wrap;"
+    "overflow-wrap:anywhere;"
+)
+_FRACTION_STYLE = (
+    "display:inline-block; vertical-align:middle; text-align:center; line-height:1.1;"
+)
+_FRACTION_NUMERATOR_STYLE = "display:block; border-bottom:1px solid currentColor; padding:0 2px;"
+_FRACTION_DENOMINATOR_STYLE = "display:block; padding:0 2px;"
+_LATEX_SYMBOLS = {
+    "alpha": "α",
+    "beta": "β",
+    "gamma": "γ",
+    "delta": "δ",
+    "epsilon": "ε",
+    "varepsilon": "ε",
+    "theta": "θ",
+    "lambda": "λ",
+    "mu": "μ",
+    "pi": "π",
+    "rho": "ρ",
+    "sigma": "σ",
+    "tau": "τ",
+    "phi": "φ",
+    "varphi": "φ",
+    "omega": "ω",
+    "Gamma": "Γ",
+    "Delta": "Δ",
+    "Theta": "Θ",
+    "Lambda": "Λ",
+    "Pi": "Π",
+    "Sigma": "Σ",
+    "Phi": "Φ",
+    "Omega": "Ω",
+    "sum": "∑",
+    "prod": "∏",
+    "int": "∫",
+    "infty": "∞",
+    "le": "≤",
+    "leq": "≤",
+    "ge": "≥",
+    "geq": "≥",
+    "neq": "≠",
+    "approx": "≈",
+    "times": "×",
+    "cdot": "·",
+    "pm": "±",
+    "in": "∈",
+    "notin": "∉",
+    "subset": "⊂",
+    "subseteq": "⊆",
+    "supset": "⊃",
+    "supseteq": "⊇",
+    "to": "→",
+    "rightarrow": "→",
+    "leftarrow": "←",
+    "Rightarrow": "⇒",
+    "Leftarrow": "⇐",
+}
+
 FRAMEWORK = """\
 <!DOCTYPE html>
 <html>
@@ -130,10 +196,172 @@ def _format_datetime(dt_obj: datetime) -> str:
     return local.strftime("%Y-%m-%d %H:%M %Z")
 
 
+def _is_escaped(text: str, idx: int) -> bool:
+    backslashes = 0
+    pos = idx - 1
+    while pos >= 0 and text[pos] == "\\":
+        backslashes += 1
+        pos -= 1
+    return backslashes % 2 == 1
+
+
+def _find_math_close(text: str, close: str, start: int) -> int:
+    pos = text.find(close, start)
+    while pos != -1:
+        if not _is_escaped(text, pos):
+            if close != "$" or pos + 1 >= len(text) or text[pos + 1] != "$":
+                return pos
+        pos = text.find(close, pos + len(close))
+    return -1
+
+
+def _match_math_open(text: str, idx: int) -> tuple[str, str, bool] | None:
+    for open_delim, close_delim, is_display in (
+        ("\\[", "\\]", True),
+        ("$$", "$$", True),
+        ("\\(", "\\)", False),
+    ):
+        if text.startswith(open_delim, idx) and not _is_escaped(text, idx):
+            return open_delim, close_delim, is_display
+
+    if text[idx] != "$" or _is_escaped(text, idx):
+        return None
+    if idx + 1 >= len(text) or text[idx + 1].isspace() or text[idx + 1] == "$":
+        return None
+    return "$", "$", False
+
+
+def _escape_text_fragment(text: str) -> str:
+    return escape(text).replace("\n", "<br/>")
+
+
+def _read_braced_group(text: str, idx: int) -> tuple[str | None, int]:
+    if idx >= len(text) or text[idx] != "{":
+        return None, idx
+    depth = 1
+    pos = idx + 1
+    while pos < len(text):
+        if text[pos] == "{" and not _is_escaped(text, pos):
+            depth += 1
+        elif text[pos] == "}" and not _is_escaped(text, pos):
+            depth -= 1
+            if depth == 0:
+                return text[idx + 1 : pos], pos + 1
+        pos += 1
+    return None, idx
+
+
+def _read_math_atom(text: str, idx: int) -> tuple[str, int]:
+    while idx < len(text) and text[idx].isspace():
+        idx += 1
+    group, next_idx = _read_braced_group(text, idx)
+    if group is not None:
+        return group, next_idx
+    if idx >= len(text):
+        return "", idx
+    if text[idx] == "\\":
+        pos = idx + 1
+        while pos < len(text) and text[pos].isalpha():
+            pos += 1
+        return text[idx:pos], pos
+    return text[idx], idx + 1
+
+
+def _read_latex_command(text: str, idx: int) -> tuple[str, int]:
+    pos = idx + 1
+    while pos < len(text) and text[pos].isalpha():
+        pos += 1
+    if pos == idx + 1 and pos < len(text):
+        pos += 1
+    return text[idx + 1 : pos], pos
+
+
+def _render_latexish_math(text: str) -> str:
+    rendered: list[str] = []
+    idx = 0
+    while idx < len(text):
+        if text.startswith("\\frac", idx):
+            numerator, after_num = _read_math_atom(text, idx + len("\\frac"))
+            denominator, after_den = _read_math_atom(text, after_num)
+            if numerator and denominator and after_den > after_num:
+                rendered.append(
+                    f'<span class="math-frac" style="{_FRACTION_STYLE}">'
+                    f'<span style="{_FRACTION_NUMERATOR_STYLE}">'
+                    f"{_render_latexish_math(numerator)}</span>"
+                    f'<span style="{_FRACTION_DENOMINATOR_STYLE}">'
+                    f"{_render_latexish_math(denominator)}</span></span>"
+                )
+                idx = after_den
+                continue
+
+        char = text[idx]
+        if char in ("^", "_"):
+            atom, next_idx = _read_math_atom(text, idx + 1)
+            if atom:
+                tag = "sup" if char == "^" else "sub"
+                rendered.append(f"<{tag}>{_render_latexish_math(atom)}</{tag}>")
+                idx = next_idx
+                continue
+
+        if char == "\\":
+            command, next_idx = _read_latex_command(text, idx)
+            if command in ("left", "right"):
+                idx = next_idx
+                continue
+            if command in _LATEX_SYMBOLS:
+                rendered.append(escape(_LATEX_SYMBOLS[command]))
+            else:
+                rendered.append(escape("\\" + command))
+            idx = next_idx
+            continue
+
+        rendered.append(escape(char))
+        idx += 1
+    return "".join(rendered)
+
+
+def _render_math_fragment(text: str, *, is_display: bool) -> str:
+    body = _render_latexish_math(text.strip() if is_display else text)
+    if is_display:
+        return f'<div class="math-display" style="{_DISPLAY_MATH_STYLE}">{body}</div>'
+    return f'<span class="math-inline" style="{_INLINE_MATH_STYLE}">{body}</span>'
+
+
+def _render_text_with_math(text: str) -> str:
+    rendered: list[str] = []
+    pos = 0
+    idx = 0
+    while idx < len(text):
+        match = _match_math_open(text, idx)
+        if match is None:
+            idx += 1
+            continue
+
+        open_delim, close_delim, is_display = match
+        content_start = idx + len(open_delim)
+        close_idx = _find_math_close(text, close_delim, content_start)
+        if close_idx == -1:
+            idx += len(open_delim)
+            continue
+
+        rendered.append(_escape_text_fragment(text[pos:idx]))
+        rendered.append(
+            _render_math_fragment(
+                text[content_start:close_idx],
+                is_display=is_display,
+            )
+        )
+        idx = close_idx + len(close_delim)
+        pos = idx
+
+    rendered.append(_escape_text_fragment(text[pos:]))
+    return "".join(rendered)
+
+
 def _render_translation(text: str | None) -> str:
     if not text:
         return "<em>No translation generated.</em>"
-    return "<br/>".join(escape(line) for line in text.splitlines())
+    return _render_text_with_math(text)
 
 
 def _resolve_accent(post: FeedPost) -> str:
@@ -208,14 +436,9 @@ def _render_summary_text(post: FeedPost) -> str:
         return "<em>尚未產生中文摘要</em>"
     if summary.startswith("[Translation"):
         return "<em>翻譯失敗，請查看詳細區塊的錯誤訊息</em>"
-    flattened = " ".join(
-        line.strip() for line in summary.splitlines() if line.strip()
-    ).strip()
-    if not flattened:
+    if not summary:
         return "<em>尚未產生中文摘要</em>"
-    if len(flattened) > 240:
-        flattened = flattened[:240].rstrip() + "..."
-    return escape(flattened)
+    return _render_text_with_math(summary)
 
 
 def _is_tao_related(post: FeedPost) -> bool:
