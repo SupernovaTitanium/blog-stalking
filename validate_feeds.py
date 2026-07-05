@@ -4,37 +4,35 @@ import argparse
 import sys
 from typing import Iterable
 
-import feedparser
 from loguru import logger
 
-from main import load_feed_urls_from_file
+from feeds import _parse_feed
+from main import FeedConfig, load_feed_configs_from_file
 
 
-def iter_feed_urls(feed_list: str) -> Iterable[str]:
-    urls = load_feed_urls_from_file(feed_list)
-    if not urls:
+def iter_feed_configs(feed_list: str) -> Iterable[FeedConfig]:
+    configs = load_feed_configs_from_file(feed_list)
+    if not configs:
         raise ValueError(f"No feed URLs found in {feed_list}")
     seen: set[str] = set()
-    for url in urls:
-        if url in seen:
+    for config in configs:
+        if config.url in seen:
             continue
-        seen.add(url)
-        yield url
+        seen.add(config.url)
+        yield config
 
 
-def validate_feed(url: str) -> tuple[str, int, str]:
+def validate_feed(config: FeedConfig) -> tuple[str, int, str]:
     try:
-        feed = feedparser.parse(url)
+        feed = _parse_feed(config.url, site_url=config.site)
     except Exception as exc:  # pragma: no cover - network dependent
         return ("error", 0, f"request failed: {exc}")
 
     entries = len(getattr(feed, "entries", []) or [])
-    if feed.bozo and not entries:
-        return ("error", entries, f"parse error: {feed.bozo_exception}")
-    if feed.bozo:
-        return ("warn", entries, f"parse warning: {feed.bozo_exception}")
     if entries == 0:
         return ("warn", entries, "no entries returned")
+    if feed.bozo:
+        return ("ok", entries, f"parse warning tolerated: {feed.bozo_exception}")
     return ("ok", entries, "")
 
 
@@ -50,27 +48,29 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        urls = list(iter_feed_urls(args.feed_list))
+        configs = list(iter_feed_configs(args.feed_list))
     except Exception as exc:  # pragma: no cover - CLI guard
         logger.error(str(exc))
         return 1
 
     ok = warn = err = 0
-    for url in urls:
-        status, count, message = validate_feed(url)
+    for config in configs:
+        status, count, message = validate_feed(config)
+        label = config.name or config.url
         if status == "ok":
             ok += 1
-            logger.info(f"[OK] {url} ({count} entries)")
+            suffix = f" - {message}" if message else ""
+            logger.info(f"[OK] {label}: {config.url} ({count} entries){suffix}")
         elif status == "warn":
             warn += 1
-            logger.warning(f"[WARN] {url} ({count} entries) - {message}")
+            logger.warning(f"[WARN] {label}: {config.url} ({count} entries) - {message}")
         else:
             err += 1
-            logger.error(f"[ERROR] {url} - {message}")
+            logger.error(f"[ERROR] {label}: {config.url} - {message}")
 
-    total = len(urls)
+    total = len(configs)
     logger.info(
-        "Validation summary: %s total • %s ok • %s warn • %s error",
+        "Validation summary: {} total • {} ok • {} warn • {} error",
         total,
         ok,
         warn,

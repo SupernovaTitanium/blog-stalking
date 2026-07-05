@@ -211,8 +211,8 @@
   },
   {
     "name": "Agustinus Kristiadi",
-    "site": "https://kristiadi.net",
-    "feed": "https://kristiadi.net/feed/"
+    "site": "https://agustinus.kristia.de",
+    "feed": "https://agustinus.kristia.de/rss.xml"
   },
   {
     "name": "Alex Shtoff",
@@ -250,7 +250,7 @@
   {
     "name": "Chris McCormick",
     "site": "https://mccormickml.com",
-    "feed": "https://mccormickml.com/feed/"
+    "feed": "https://mccormickml.com/atom.xml"
   },
   {
     "name": "colahs blog",
@@ -391,7 +391,7 @@
   {
     "name": "Connectionism",
     "site": "https://thinkingmachines.ai/blog",
-    "feed": "https://thinkingmachines.ai/blog/rss.xml"
+    "feed": "https://thinkingmachines.ai/blog/index.xml"
   },
   {
     "name": "Greg Brockman",
