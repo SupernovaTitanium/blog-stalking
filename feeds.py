@@ -9,7 +9,6 @@ from urllib.parse import urljoin, urlparse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
-from html import unescape as html_unescape
 from typing import Any, List, Mapping, Optional
 
 import feedparser
@@ -95,7 +94,6 @@ def _sanitize_feed_payload(payload: bytes) -> bytes:
     cleaned = _INVALID_XML_BYTES.sub(b"", payload)
     text = cleaned.decode("utf-8", errors="replace")
     text = _INVALID_XML_CHARS.sub("", text)
-    text = html_unescape(text)
     text = _BARE_AMPERSAND.sub("&amp;", text)
     return text.encode("utf-8")
 
@@ -192,7 +190,7 @@ def _parse_feed(
         request_headers=_FEED_HEADERS,
         agent=_FEED_HEADERS["User-Agent"],
     )
-    if feed.bozo and not getattr(feed, "entries", None):
+    if feed.bozo:
         bozo_exc = getattr(feed, "bozo_exception", None)
         payload: bytes | None = None
         try:
@@ -207,13 +205,23 @@ def _parse_feed(
                 except Exception:
                     payload = None
             if payload is None:
-                if bozo_exc:
+                if bozo_exc and not getattr(feed, "entries", None):
                     raise RuntimeError(
                         f"Failed to parse feed {feed_url}: {bozo_exc}"
                     ) from exc
-                raise RuntimeError(f"Failed to parse feed {feed_url}: {exc}") from exc
+                if not getattr(feed, "entries", None):
+                    raise RuntimeError(f"Failed to parse feed {feed_url}: {exc}") from exc
 
-        feed = feedparser.parse(_sanitize_feed_payload(payload))
+        if payload is not None:
+            sanitized_feed = feedparser.parse(_sanitize_feed_payload(payload))
+            sanitized_entries = getattr(sanitized_feed, "entries", None)
+            if sanitized_entries and (
+                not sanitized_feed.bozo or not getattr(feed, "entries", None)
+            ):
+                feed = sanitized_feed
+            elif not getattr(feed, "entries", None):
+                feed = sanitized_feed
+
         if feed.bozo and not getattr(feed, "entries", None):
             html_text = payload.decode("utf-8", errors="replace")
             if _looks_like_html(html_text):
