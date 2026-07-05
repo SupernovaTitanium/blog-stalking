@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 import time
-import urllib.request
 from typing import Any
 from typing import List, Sequence
 
@@ -39,6 +38,7 @@ class OpenAITranslator:
     INVALID_STRUCTURED_RESPONSE = "[Translation error: invalid structured response]"
     INVALID_TRANSLATION_RESPONSE = "[Translation error: invalid structured translation]"
     NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+    NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
     def __init__(
         self,
@@ -52,6 +52,7 @@ class OpenAITranslator:
         temperature: float | None = None,
         provider: str = "openai",
         nvidia_api_url: str | None = None,
+        nvidia_base_url: str | None = None,
         nvidia_rpm: int = 10,
         nvidia_max_tokens: int = 16384,
         nvidia_top_p: float = 0.95,
@@ -63,10 +64,17 @@ class OpenAITranslator:
                 api_key=api_key,
                 base_url=base_url,
             )
+        elif self.provider == "nvidia":
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=self._coerce_nvidia_base_url(
+                    nvidia_base_url=nvidia_base_url,
+                    nvidia_api_url=nvidia_api_url,
+                ),
+            )
         elif self.provider != "nvidia":
             raise ValueError(f"Unsupported AI provider: {provider}")
         self.api_key = api_key
-        self.nvidia_api_url = nvidia_api_url or self.NVIDIA_API_URL
         self.nvidia_max_tokens = int(nvidia_max_tokens)
         self.nvidia_top_p = float(nvidia_top_p)
         self._nvidia_limiter = _MinuteRateLimiter(nvidia_rpm)
@@ -76,6 +84,22 @@ class OpenAITranslator:
         self.max_total_chars = max_total_chars
         self.temperature = temperature
         self._max_filter_depth = 3
+
+    def _coerce_nvidia_base_url(
+        self,
+        *,
+        nvidia_base_url: str | None,
+        nvidia_api_url: str | None,
+    ) -> str:
+        if nvidia_base_url:
+            return nvidia_base_url.rstrip("/")
+        if nvidia_api_url:
+            normalized = nvidia_api_url.rstrip("/")
+            suffix = "/chat/completions"
+            if normalized.endswith(suffix):
+                return normalized[: -len(suffix)]
+            return normalized
+        return self.NVIDIA_BASE_URL
 
     def _chat_completion_content(
         self,
@@ -105,41 +129,26 @@ class OpenAITranslator:
         messages: list[dict[str, str]],
     ) -> tuple[str, str | None]:
         self._nvidia_limiter.wait()
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": 1 if self.temperature is None else self.temperature,
-            "max_tokens": self.nvidia_max_tokens,
-            "top_p": self.nvidia_top_p,
-            "stream": True,
-        }
-        request = urllib.request.Request(
-            self.nvidia_api_url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "Accept": "text/event-stream",
-            },
-            method="POST",
-        )
-
         parts: list[str] = []
         finish_reason: str | None = None
-        with urllib.request.urlopen(request, timeout=240) as response:
-            for raw in response:
-                line = raw.decode("utf-8", "replace").strip()
-                if not line.startswith("data:"):
-                    continue
-                data = line[5:].strip()
-                if data == "[DONE]":
-                    break
-                chunk = json.loads(data)
-                choice = (chunk.get("choices") or [{}])[0]
-                finish_reason = choice.get("finish_reason") or finish_reason
-                text = (choice.get("delta") or {}).get("content")
-                if text:
-                    parts.append(text)
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=1 if self.temperature is None else self.temperature,
+            max_tokens=self.nvidia_max_tokens,
+            top_p=self.nvidia_top_p,
+            stream=True,
+        )
+        for chunk in completion:
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+            choice = choices[0]
+            finish_reason = getattr(choice, "finish_reason", None) or finish_reason
+            delta = getattr(choice, "delta", None)
+            text = getattr(delta, "content", None) if delta is not None else None
+            if text:
+                parts.append(text)
         return "".join(parts).strip(), finish_reason
 
     def translate_batch_by_feed(

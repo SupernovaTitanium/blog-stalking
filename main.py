@@ -175,8 +175,14 @@ if __name__ == "__main__":
     add_argument(
         "--nvidia_api_url",
         type=str,
-        default=OpenAITranslator.NVIDIA_API_URL,
-        help="NVIDIA chat completions endpoint.",
+        default="",
+        help="Legacy NVIDIA chat completions endpoint.",
+    )
+    add_argument(
+        "--nvidia_base_url",
+        type=str,
+        default=OpenAITranslator.NVIDIA_BASE_URL,
+        help="NVIDIA OpenAI-compatible API base URL.",
     )
     add_argument(
         "--nvidia_model",
@@ -362,6 +368,7 @@ if __name__ == "__main__":
             target_language=args.target_language,
             provider="nvidia" if use_nvidia else "openai",
             nvidia_api_url=args.nvidia_api_url,
+            nvidia_base_url=args.nvidia_base_url,
             nvidia_rpm=args.nvidia_rpm,
         )
         summaries = translator.translate_batch_by_feed(
