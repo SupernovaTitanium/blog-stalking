@@ -62,7 +62,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | `FAILURE_LOG` | *(blank)* | Optional path to write feed fetch failures (useful for debugging/test runs). |
 | `NVIDIA_MODEL` | `z-ai/glm-5.2` | NVIDIA chat model used when `NVIDIA_API_KEY` is set. |
 | `NVIDIA_API_URL` | `https://integrate.api.nvidia.com/v1/chat/completions` | NVIDIA chat completions endpoint. |
-| `NVIDIA_RPM` | `10` | Maximum NVIDIA chat completion requests per minute. |
+| `NVIDIA_RPM` | `4` | Maximum NVIDIA chat completion requests per minute. |
 
 4. **Trigger the workflow** from the Actions tab or wait for the nightly schedule (22:00 UTC). Check the run logs for translation details and SMTP delivery results.
 

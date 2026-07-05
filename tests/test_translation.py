@@ -23,6 +23,10 @@ class _DummyBadRequestError(Exception):
     pass
 
 
+class _DummyRateLimitError(Exception):
+    status_code = 429
+
+
 class _DummyOpenAI:
     def __init__(self, *args, **kwargs):
         self.args = args
@@ -209,6 +213,44 @@ class FeedTranslationJsonSchemaTest(unittest.TestCase):
             ),
             "https://integrate.api.nvidia.com/v1",
         )
+
+    def test_nvidia_rate_limit_retries_before_returning_translation(self) -> None:
+        translator = OpenAITranslator(
+            api_key="nv-key",
+            provider="nvidia",
+            model="z-ai/glm-5.2",
+            target_language="Chinese (Traditional)",
+            rate_limit_retries=1,
+            rate_limit_base_sleep=1,
+        )
+        translator._nvidia_limiter.wait = MagicMock()
+        create_mock = MagicMock(
+            side_effect=[
+                _DummyRateLimitError("Error code: 429 - Too Many Requests"),
+                iter(
+                    [
+                        SimpleNamespace(
+                            choices=[
+                                SimpleNamespace(
+                                    finish_reason="stop",
+                                    delta=SimpleNamespace(
+                                        content='{"translation":"完整中文翻譯"}'
+                                    ),
+                                )
+                            ]
+                        )
+                    ]
+                ),
+            ]
+        )
+        translator.client.chat.completions.create = create_mock
+
+        with patch("translation.time.sleep") as sleep_mock:
+            result = translator.translate_batch(["source text"])
+
+        self.assertEqual(result, ["完整中文翻譯"])
+        self.assertEqual(create_mock.call_count, 2)
+        sleep_mock.assert_called_once_with(1.0)
         self.assertEqual(
             translator.client.kwargs["base_url"],
             "https://integrate.api.nvidia.com/v1",

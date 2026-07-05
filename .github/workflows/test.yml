@@ -53,7 +53,7 @@ jobs:
           NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL || 'z-ai/glm-5.2' }}
           NVIDIA_BASE_URL: ${{ vars.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1' }}
           NVIDIA_API_URL: ${{ vars.NVIDIA_API_URL || '' }}
-          NVIDIA_RPM: ${{ vars.NVIDIA_RPM || '10' }}
+          NVIDIA_RPM: ${{ vars.NVIDIA_RPM || '4' }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SENDER: ${{ secrets.SENDER }}

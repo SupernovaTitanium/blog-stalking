@@ -193,7 +193,7 @@ if __name__ == "__main__":
     add_argument(
         "--nvidia_rpm",
         type=int,
-        default=10,
+        default=4,
         help="Maximum NVIDIA chat completion requests per minute.",
     )
     add_argument("--smtp_server", type=str, help="SMTP server hostname.")

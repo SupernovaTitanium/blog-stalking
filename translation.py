@@ -53,9 +53,11 @@ class OpenAITranslator:
         provider: str = "openai",
         nvidia_api_url: str | None = None,
         nvidia_base_url: str | None = None,
-        nvidia_rpm: int = 10,
+        nvidia_rpm: int = 4,
         nvidia_max_tokens: int = 16384,
         nvidia_top_p: float = 0.95,
+        rate_limit_retries: int = 4,
+        rate_limit_base_sleep: float = 65,
     ):
         self.provider = (provider or "openai").lower()
         self.client = None
@@ -78,6 +80,8 @@ class OpenAITranslator:
         self.nvidia_max_tokens = int(nvidia_max_tokens)
         self.nvidia_top_p = float(nvidia_top_p)
         self._nvidia_limiter = _MinuteRateLimiter(nvidia_rpm)
+        self.rate_limit_retries = max(0, int(rate_limit_retries))
+        self.rate_limit_base_sleep = max(1.0, float(rate_limit_base_sleep))
         self.model = model
         self.target_language = target_language
         self.max_chars = max_chars
@@ -108,7 +112,9 @@ class OpenAITranslator:
         response_format: dict[str, Any] | None = None,
     ) -> tuple[str, str | None]:
         if self.provider == "nvidia":
-            return self._nvidia_streaming_chat_completion(messages=messages)
+            return self._with_rate_limit_retries(
+                lambda: self._nvidia_streaming_chat_completion(messages=messages)
+            )
 
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -119,9 +125,52 @@ class OpenAITranslator:
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
 
-        response = self.client.chat.completions.create(**kwargs)
-        choice = response.choices[0]
-        return (choice.message.content or "").strip(), choice.finish_reason
+        def request_once() -> tuple[str, str | None]:
+            response = self.client.chat.completions.create(**kwargs)
+            choice = response.choices[0]
+            return (choice.message.content or "").strip(), choice.finish_reason
+
+        return self._with_rate_limit_retries(request_once)
+
+    def _with_rate_limit_retries(self, operation):
+        for attempt in range(self.rate_limit_retries + 1):
+            try:
+                return operation()
+            except Exception as exc:
+                if not self._is_rate_limit_error(exc) or attempt >= self.rate_limit_retries:
+                    raise
+                sleep_for = self._retry_after_seconds(exc, attempt)
+                logger.warning(
+                    "Rate limit hit; retrying in {:.1f}s (attempt {}/{}).",
+                    sleep_for,
+                    attempt + 1,
+                    self.rate_limit_retries,
+                )
+                time.sleep(sleep_for)
+        return operation()
+
+    def _is_rate_limit_error(self, exc: Exception) -> bool:
+        status_code = getattr(exc, "status_code", None)
+        if status_code == 429:
+            return True
+        response = getattr(exc, "response", None)
+        if getattr(response, "status_code", None) == 429:
+            return True
+        text = str(exc).lower()
+        return "429" in text or "too many requests" in text or "rate limit" in text
+
+    def _retry_after_seconds(self, exc: Exception, attempt: int) -> float:
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", None)
+        retry_after = None
+        if headers is not None:
+            retry_after = headers.get("retry-after") or headers.get("Retry-After")
+        if retry_after:
+            try:
+                return max(1.0, float(retry_after))
+            except ValueError:
+                pass
+        return self.rate_limit_base_sleep * (attempt + 1)
 
     def _nvidia_streaming_chat_completion(
         self,
