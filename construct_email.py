@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import hashlib
 from email.header import Header
 from email.mime.text import MIMEText
@@ -320,9 +320,15 @@ SUMMARY_ITEM_TEMPLATE = """\
 </div>
 """
 
+# Taiwan has no DST, so a fixed offset is exact; pinning it avoids the
+# digest showing whatever timezone the machine running the workflow
+# happens to have (Actions = UTC, a dev box = anything).
+_TAIPEI_TZ = timezone(timedelta(hours=8))
+
+
 def _format_datetime(dt_obj: datetime) -> str:
-    local = dt_obj.astimezone()
-    return local.strftime("%Y-%m-%d %H:%M %Z")
+    local = dt_obj.astimezone(_TAIPEI_TZ)
+    return local.strftime("%Y-%m-%d %H:%M UTC+8")
 
 
 def _is_escaped(text: str, idx: int) -> bool:

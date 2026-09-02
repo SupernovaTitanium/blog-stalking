@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from construct_email import (
+    _format_datetime,
     _render_summary_text,
     _render_translation,
     render_email,
@@ -24,6 +25,20 @@ def _post(summary: str) -> FeedPost:
         feed_url="https://example.com/feed.xml",
         summary=summary,
     )
+
+
+class DatetimeFormattingTest(unittest.TestCase):
+    def test_published_time_is_pinned_to_utc8(self) -> None:
+        # Machine-local timezones (Actions=UTC, a dev box=anything) must not
+        # leak into the digest; always render Taipei time.
+        utc_time = datetime(2026, 9, 1, 19, 52, tzinfo=timezone.utc)
+
+        self.assertEqual(_format_datetime(utc_time), "2026-09-02 03:52 UTC+8")
+
+    def test_non_utc_input_still_lands_on_utc8(self) -> None:
+        plus3 = datetime(2026, 9, 1, 22, 52, tzinfo=timezone(timedelta(hours=3)))
+
+        self.assertEqual(_format_datetime(plus3), "2026-09-02 03:52 UTC+8")
 
 
 class EmailMathRenderingTest(unittest.TestCase):

@@ -66,6 +66,10 @@ _FEED_SUFFIXES = (
     "rss20.xml",
 )
 
+# Feeds like Mastodon RSS have no separate title field, so the whole post
+# text becomes the title; cap it so digest headings stay readable.
+_TITLE_MAX_LEN = 140
+
 # Feeds occasionally omit entry timestamps. Entries near the top of such
 # feeds are usually recent, so include the first few as "now" and let the
 # run-state seen-list suppress repeats; undated entries never evict dated
@@ -410,6 +414,8 @@ def fetch_recent_posts(
         soup = BeautifulSoup(raw_html or "", "html.parser")
         text = soup.get_text("\n").strip()
         title = (getattr(entry, "title", "") or text or "New post").strip()
+        if len(title) > _TITLE_MAX_LEN:
+            title = title[:_TITLE_MAX_LEN].rstrip() + "…"
 
         source = feed_title
         source_entry = entry.get("source")

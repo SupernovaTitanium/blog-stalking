@@ -9,9 +9,56 @@ from feeds import (
     _extract_entry_html,
     _parse_feed,
     _sanitize_feed_payload,
+    fetch_recent_posts,
 )
 from feedparser import FeedParserDict
 from unittest.mock import patch
+
+
+class FetchRecentPostsTitleTest(unittest.TestCase):
+    def _feed_with_title(self, title: str) -> bytes:
+        escaped = title.replace("&", "&amp;")
+        return (
+            '<rss version="2.0"><channel><title>T</title><link>https://example.com/</link>'
+            f"<item><title>{escaped}</title>"
+            "<link>https://example.com/post</link>"
+            "<pubDate>Wed, 02 Sep 2026 06:00:00 +0000</pubDate>"
+            "<description>body text</description></item>"
+            "</channel></rss>"
+        ).encode("utf-8")
+
+    def test_oversized_titles_are_truncated(self) -> None:
+        # Mastodon-style feeds put the whole post text into the title.
+        huge_title = "字" * 300
+
+        with patch(
+            "feeds._fetch_feed_bytes",
+            return_value=self._feed_with_title(huge_title),
+        ):
+            posts = fetch_recent_posts(
+                "https://example.com/feed",
+                window_hours=24,
+                cutoff=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(len(posts), 1)
+        self.assertLessEqual(len(posts[0].title), 141)
+        self.assertTrue(posts[0].title.endswith("…"))
+        # The full text is still available as content.
+        self.assertIn("body text", posts[0].content_text)
+
+    def test_normal_titles_are_untouched(self) -> None:
+        with patch(
+            "feeds._fetch_feed_bytes",
+            return_value=self._feed_with_title("A perfectly normal title"),
+        ):
+            posts = fetch_recent_posts(
+                "https://example.com/feed",
+                window_hours=24,
+                cutoff=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(posts[0].title, "A perfectly normal title")
 
 
 class ExtractEntryHtmlTest(unittest.TestCase):

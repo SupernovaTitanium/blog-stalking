@@ -90,19 +90,6 @@
     "feed": "https://bartoszmilewski.com/feed/"
   },
   {
-    "name": "Paul Graham Essays",
-    "site": "https://paulgraham.com",
-    "feed": "https://filipesilva.github.io/paulgraham-rss/feed.rss",
-    "owner": "Paul Graham",
-    "category": "Individual essayist",
-    "description": "Classic essays on startups, programming, and independent thinking.",
-    "tags": [
-      "startups",
-      "essays",
-      "programming"
-    ]
-  },
-  {
     "name": "Simon Willison",
     "site": "https://simonwillison.net",
     "feed": "https://simonwillison.net/atom/everything/",
