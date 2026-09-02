@@ -58,55 +58,151 @@ _FRACTION_STYLE = (
 )
 _FRACTION_NUMERATOR_STYLE = "display:block; border-bottom:1px solid currentColor; padding:0 2px;"
 _FRACTION_DENOMINATOR_STYLE = "display:block; padding:0 2px;"
+
+# Unicode Mathematical Alphanumeric Symbols: offset tables validated against
+# unicodedata names; `holes` are reserved codepoints remapped to legacy blocks.
+_MATH_ALPHABET_STYLES = {
+    "bold": (0x1D400, 0x1D41A, 0x1D7CE, {}),
+    "italic": (0x1D434, 0x1D44E, None, {"h": "ℎ"}),
+    "bold_italic": (0x1D468, 0x1D482, None, {}),
+    "script": (
+        0x1D49C, 0x1D4B6, None,
+        {"B": "ℬ", "E": "ℰ", "F": "ℱ", "H": "ℋ", "I": "ℐ",
+         "L": "ℒ", "M": "ℳ", "R": "ℛ", "e": "ℯ", "g": "ℊ", "o": "ℴ"},
+    ),
+    "fraktur": (0x1D504, 0x1D51E, None, {"C": "ℭ", "H": "ℌ", "I": "ℑ", "R": "ℜ", "Z": "ℨ"}),
+    "double": (
+        0x1D538, 0x1D552, 0x1D7D8,
+        {"C": "ℂ", "H": "ℍ", "N": "ℕ", "P": "ℙ", "Q": "ℚ", "R": "ℝ", "Z": "ℤ"},
+    ),
+    "sans": (0x1D5A0, 0x1D5BA, 0x1D7E2, {}),
+    "bold_sans": (0x1D5D4, 0x1D5EE, 0x1D7EC, {}),
+    "mono": (0x1D670, 0x1D68A, 0x1D7F6, {}),
+}
+
+_FONT_COMMANDS = {
+    "mathbb": "double",
+    "Bbb": "double",
+    "mathbf": "bold",
+    "mathit": "italic",
+    "boldsymbol": "bold_italic",
+    "bm": "bold_italic",
+    "mathcal": "script",
+    "mathscr": "script",
+    "mathfrak": "fraktur",
+    "frak": "fraktur",
+    "mathsf": "sans",
+    "mathtt": "mono",
+    # Upright styles: our rendering is upright text anyway, so just emit the
+    # group's content (digits/letters stay unmapped).
+    "mathrm": None,
+    "text": None,
+    "textrm": None,
+    "textup": None,
+    "operatorname": None,
+    "mbox": None,
+    "hbox": None,
+    "mathnormal": None,
+}
+
+_MATH_ACCENTS = {
+    "hat": "\u0302",
+    "widehat": "\u0302",
+    "tilde": "\u0303",
+    "widetilde": "\u0303",
+    "bar": "\u0304",
+    "vec": "\u20D7",
+    "dot": "\u0307",
+    "ddot": "\u0308",
+    "dddot": "\u20DB",
+    "check": "\u030C",
+    "breve": "\u0306",
+    "acute": "\u0301",
+    "grave": "\u0300",
+    "mathring": "\u030A",
+}
+
+# Structural commands consumed silently: no output, optional braced argument.
+_MATH_SKIP_WITH_ARG = {"label", "tag", "color", "href", "style"}
+# No output, no argument.
+_MATH_SKIP_NO_ARG = {
+    "displaystyle", "textstyle", "scriptstyle", "limits", "nolimits",
+    "nonumber", "notag", "hfill", "hfil", "medskip", "smallskip", "bigskip",
+    "noindent", "indent", "qed", "qedhere", "allowbreak",
+}
+_MATH_SPACING = {
+    ",": " ", ":": " ", ";": " ", "!": "", " ": "&nbsp;",
+    "quad": "&ensp;", "qquad": "&emsp;",
+}
+
+_MATH_ENV_DELIMITERS = {
+    "matrix": (None, None),
+    "smallmatrix": (None, None),
+    "pmatrix": ("(", ")"),
+    "bmatrix": ("[", "]"),
+    "Bmatrix": ("{", "}"),
+    "vmatrix": ("|", "|"),
+    "VMatrix": ("‖", "‖"),
+    "cases": ("{", ""),
+    "array": (None, None),
+}
+_MATH_ALIGNMENT_ENVS = {
+    "align", "alignat", "aligned", "gather", "gathered", "multline",
+    "split", "eqnarray", "flalign", "alignedat", "displaymath", "equation",
+}
+
 _LATEX_SYMBOLS = {
-    "alpha": "α",
-    "beta": "β",
-    "gamma": "γ",
-    "delta": "δ",
-    "epsilon": "ε",
-    "varepsilon": "ε",
-    "theta": "θ",
-    "lambda": "λ",
-    "mu": "μ",
-    "pi": "π",
-    "rho": "ρ",
-    "sigma": "σ",
-    "tau": "τ",
-    "phi": "φ",
-    "varphi": "φ",
-    "omega": "ω",
-    "Gamma": "Γ",
-    "Delta": "Δ",
-    "Theta": "Θ",
-    "Lambda": "Λ",
-    "Pi": "Π",
-    "Sigma": "Σ",
-    "Phi": "Φ",
-    "Omega": "Ω",
-    "sum": "∑",
-    "prod": "∏",
-    "int": "∫",
-    "infty": "∞",
-    "le": "≤",
-    "leq": "≤",
-    "ge": "≥",
-    "geq": "≥",
-    "neq": "≠",
-    "approx": "≈",
-    "times": "×",
-    "cdot": "·",
-    "pm": "±",
-    "in": "∈",
-    "notin": "∉",
-    "subset": "⊂",
-    "subseteq": "⊆",
-    "supset": "⊃",
-    "supseteq": "⊇",
-    "to": "→",
-    "rightarrow": "→",
-    "leftarrow": "←",
-    "Rightarrow": "⇒",
-    "Leftarrow": "⇐",
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε",
+    "varepsilon": "ε", "zeta": "ζ", "eta": "η", "theta": "θ", "vartheta": "ϑ",
+    "iota": "ι", "kappa": "κ", "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ",
+    "pi": "π", "varpi": "ϖ", "rho": "ρ", "varrho": "ϱ", "sigma": "σ",
+    "varsigma": "ς", "tau": "τ", "upsilon": "υ", "phi": "φ", "varphi": "φ",
+    "chi": "χ", "psi": "ψ", "omega": "ω", "Gamma": "Γ", "Delta": "Δ",
+    "Theta": "Θ", "Lambda": "Λ", "Xi": "Ξ", "Pi": "Π", "Sigma": "Σ",
+    "Upsilon": "Υ", "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω",
+    "sum": "∑", "prod": "∏", "coprod": "∐", "int": "∫", "iint": "∬",
+    "iiint": "∭", "oint": "∮", "bigcup": "⋃", "bigcap": "⋂", "bigvee": "⋁",
+    "bigwedge": "⋀", "bigoplus": "⨁", "bigotimes": "⨂", "bigodot": "⨀",
+    "infty": "∞", "partial": "∂", "nabla": "∇", "ell": "ℓ", "hbar": "ℏ",
+    "imath": "ı", "jmath": "ȷ", "aleph": "ℵ", "wp": "℘", "Re": "ℜ", "Im": "ℑ",
+    "emptyset": "∅", "varnothing": "⌀", "forall": "∀", "exists": "∃",
+    "nexists": "∄", "neg": "¬", "lnot": "¬", "land": "∧", "wedge": "∧",
+    "lor": "∨", "vee": "∨",
+    "le": "≤", "leq": "≤", "ge": "≥", "geq": "≥", "neq": "≠", "ne": "≠",
+    "approx": "≈", "asymp": "≍", "simeq": "≃", "cong": "≅", "sim": "∼",
+    "propto": "∝", "equiv": "≡", "doteq": "≐", "ll": "≪", "gg": "≫",
+    "subset": "⊂", "subseteq": "⊆", "subsetneq": "⊊", "nsubseteq": "⊈",
+    "supset": "⊃", "supseteq": "⊇", "supsetneq": "⊋", "nsupseteq": "⊉",
+    "in": "∈", "notin": "∉", "ni": "∋",
+    "pm": "±", "mp": "∓", "times": "×", "cdot": "·", "div": "÷",
+    "ast": "∗", "star": "⋆", "circ": "∘", "bullet": "•",
+    "oplus": "⊕", "ominus": "⊖", "otimes": "⊗", "oslash": "⊘", "odot": "⊙",
+    "to": "→", "rightarrow": "→", "leftarrow": "←", "gets": "←",
+    "leftrightarrow": "↔", "Rightarrow": "⇒", "Leftarrow": "⇐",
+    "Leftrightarrow": "⇔", "uparrow": "↑", "downarrow": "↓",
+    "updownarrow": "↕", "mapsto": "↦", "rightarrowtail": "↣",
+    "longrightarrow": "⟶", "longmapsto": "⟼", "implies": "⟹", "iff": "⟺",
+    "nearrow": "↗", "searrow": "↘", "swarrow": "↙", "nwarrow": "↖",
+    "rightleftharpoons": "⇌",
+    "ldots": "…", "dots": "…", "dotsc": "…", "dotso": "…", "cdots": "⋯",
+    "dotsb": "⋯", "dotsm": "⋯", "dotsi": "⋯", "vdots": "⋮", "ddots": "⋱",
+    "prime": "′", "dprime": "″", "degree": "°",
+    "langle": "⟨", "rangle": "⟩", "vert": "|", "Vert": "‖", "|": "‖",
+    "lvert": "|", "rvert": "|", "lVert": "‖", "rVert": "‖",
+    "lceil": "⌈", "rceil": "⌉", "lfloor": "⌊", "rfloor": "⌋",
+    "perp": "⊥", "parallel": "∥", "mid": "∣", "angle": "∠",
+    "triangle": "△", "square": "□", "checkmark": "✓", "dagger": "†",
+    "ddagger": "‡", "S": "§", "P": "¶",
+    "vdash": "⊢", "dashv": "⊣", "models": "⊨",
+    "therefore": "∴", "because": "∵",
+    "max": "max", "min": "min", "sup": "sup", "inf": "inf", "lim": "lim",
+    "limsup": "lim sup", "liminf": "lim inf", "log": "log", "ln": "ln",
+    "exp": "exp", "sin": "sin", "cos": "cos", "tan": "tan", "cot": "cot",
+    "sec": "sec", "csc": "csc", "arcsin": "arcsin", "arccos": "arccos",
+    "arctan": "arctan", "sinh": "sinh", "cosh": "cosh", "tanh": "tanh",
+    "det": "det", "dim": "dim", "deg": "deg", "gcd": "gcd", "hom": "hom",
+    "ker": "ker", "arg": "arg", "Pr": "Pr",
+    "{": "{", "}": "}", "#": "#", "%": "%", "&": " ", "_": "_", "$": "$",
 }
 
 FRAMEWORK = """\
@@ -309,6 +405,103 @@ def _read_latex_command(text: str, idx: int) -> tuple[str, int]:
     return text[idx + 1 : pos], pos
 
 
+def _map_math_alphabet(rendered: str, style: str | None) -> str:
+    """Map ASCII letters/digits to Unicode math alphanumerics for a style.
+
+    Skips anything containing markup so nested HTML survives untouched.
+    """
+    if not style or "<" in rendered or "&" in rendered:
+        return rendered
+    table = _MATH_ALPHABET_STYLES.get(style)
+    if table is None:
+        return rendered
+    up_base, lo_base, dig_base, exceptions = table
+    out: list[str] = []
+    for ch in rendered:
+        code = ord(ch)
+        if 65 <= code <= 90:
+            out.append(exceptions.get(ch) or chr(up_base + code - 65))
+        elif 97 <= code <= 122:
+            out.append(exceptions.get(ch) or chr(lo_base + code - 97))
+        elif 48 <= code <= 57 and dig_base is not None:
+            out.append(chr(dig_base + code - 48))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _render_math_env(env: str, content: str) -> str:
+    """Render matrix/alignment environments as email-safe HTML."""
+    env = env.rstrip("*")
+    if env in _MATH_ALIGNMENT_ENVS:
+        rows = content.split("\\\\")
+        lines = []
+        for row in rows:
+            cleaned = row.replace("&", " ").replace("\\hline", "")
+            rendered = _render_latexish_math(cleaned.strip()).strip()
+            if rendered:
+                lines.append(rendered)
+        return "<br/>".join(lines)
+
+    left, right = _MATH_ENV_DELIMITERS.get(env, (None, None))
+    content = content.replace("\\hline", "")
+    body_rows: list[str] = []
+    for row in content.split("\\\\"):
+        if not row.strip():
+            continue
+        cells = [
+            _render_latexish_math(cell.strip()) for cell in row.split("&")
+        ]
+        body_rows.append("&nbsp;&nbsp;".join(cell for cell in cells if cell))
+    body = "<br/>".join(body_rows)
+
+    def _delim(ch: str | None) -> str:
+        if not ch:
+            return ""
+        return (
+            f'<span style="font-size:1.5em; vertical-align:middle;">'
+            f"{escape(ch)}</span>"
+        )
+
+    return (
+        '<span style="display:inline-block; vertical-align:middle;">'
+        f"{_delim(left)}"
+        '<span style="display:inline-block; vertical-align:middle; '
+        f'text-align:center; line-height:1.3;">{body}</span>'
+        f"{_delim(right)}</span>"
+    )
+
+
+def _read_sqrt_arguments(text: str, idx: int) -> tuple[str | None, str | None, int]:
+    """Read an optional [n] index and the radicand after \\sqrt."""
+    degree: str | None = None
+    if idx < len(text) and text[idx] == "[":
+        close = text.find("]", idx + 1)
+        if close != -1:
+            degree = text[idx + 1 : close].strip()
+            idx = close + 1
+    while idx < len(text) and text[idx].isspace():
+        idx += 1
+    group, after = _read_braced_group(text, idx)
+    if group is not None:
+        return degree, group, after
+    atom, after = _read_math_atom(text, idx)
+    return degree, atom or None, after
+
+
+def _render_binom(top: str, bottom: str) -> str:
+    return (
+        '<span style="display:inline-block; vertical-align:middle; text-align:center;">'
+        '<span style="display:inline-block; font-size:1.4em; vertical-align:middle;">(</span>'
+        '<span style="display:inline-block; vertical-align:middle; line-height:1.1;">'
+        f'<span style="display:block; padding:0 2px;">{top}</span>'
+        f'<span style="display:block; padding:0 2px;">{bottom}</span>'
+        "</span>"
+        '<span style="display:inline-block; font-size:1.4em; vertical-align:middle;">)</span>'
+        "</span>"
+    )
+
+
 def _render_latexish_math(text: str) -> str:
     rendered: list[str] = []
     idx = 0
@@ -336,16 +529,159 @@ def _render_latexish_math(text: str) -> str:
                 idx = next_idx
                 continue
 
+        if char == "~":
+            rendered.append("&nbsp;")
+            idx += 1
+            continue
+
+        if char in "{}":
+            group, next_idx = _read_braced_group(text, idx)
+            if group is not None:
+                # Bare braces are pure grouping in LaTeX: render the content
+                # only, not the braces themselves.
+                rendered.append(_render_latexish_math(group))
+                idx = next_idx
+                continue
+
         if char == "\\":
             command, next_idx = _read_latex_command(text, idx)
+
             if command in ("left", "right"):
                 idx = next_idx
                 continue
+            if command == "\\":
+                rendered.append("<br/>")
+                idx = next_idx
+                continue
+
+            if command == "begin":
+                env_group, after_env = _read_braced_group(text, next_idx)
+                if env_group is not None:
+                    end_token = "\\end{" + env_group + "}"
+                    end_at = text.find(end_token, after_env)
+                    if end_at != -1:
+                        env_content = text[after_env:end_at]
+                        rendered.append(_render_math_env(env_group, env_content))
+                        idx = end_at + len(end_token)
+                        continue
+                    idx = after_env
+                    continue
+                idx = next_idx
+                continue
+
+            if command in _FONT_COMMANDS:
+                if command == "operatorname" and text[next_idx : next_idx + 1] == "*":
+                    next_idx += 1
+                group, after = _read_braced_group(text, next_idx)
+                if group is None:
+                    atom, after = _read_math_atom(text, next_idx)
+                    group, after = (atom or ""), after
+                if command == "operatorname" and after < len(text) and text[after] == "*":
+                    after += 1
+                inner = _render_latexish_math(group)
+                rendered.append(
+                    escape(_map_math_alphabet(inner, _FONT_COMMANDS[command]))
+                    if "<" not in inner
+                    else inner
+                )
+                idx = after
+                continue
+
+            if command in _MATH_ACCENTS:
+                atom, after = _read_math_atom(text, next_idx)
+                if atom:
+                    inner = _render_latexish_math(atom)
+                    mark = _MATH_ACCENTS[command]
+                    if "<" in inner or len(inner) > 1:
+                        # Wide accents have no single Unicode glyph; putting
+                        # the combining mark after the group approximates it.
+                        inner = inner + mark
+                    else:
+                        inner = inner[0] + mark + inner[1:]
+                    rendered.append(inner)
+                    idx = after
+                else:
+                    idx = next_idx
+                continue
+
+            if command == "sqrt":
+                degree, radicand, after = _read_sqrt_arguments(text, next_idx)
+                if radicand is not None:
+                    inner = _render_latexish_math(radicand)
+                    prefix = ""
+                    if degree:
+                        prefix = f"<sup>{escape(degree)}</sup>"
+                    rendered.append(
+                        f'{prefix}√<span style="text-decoration:overline;">{inner}</span>'
+                    )
+                    idx = after
+                else:
+                    idx = next_idx
+                continue
+
+            if command == "binom":
+                top, after_top = _read_math_atom(text, next_idx)
+                bottom, after_bottom = _read_math_atom(text, after_top)
+                if top and bottom:
+                    rendered.append(
+                        _render_binom(
+                            _render_latexish_math(top), _render_latexish_math(bottom)
+                        )
+                    )
+                    idx = after_bottom
+                else:
+                    idx = next_idx
+                continue
+
+            if command == "overline":
+                group, after = _read_braced_group(text, next_idx)
+                if group is None:
+                    atom, after = _read_math_atom(text, next_idx)
+                    group, after = (atom or ""), after
+                rendered.append(
+                    f'<span style="text-decoration:overline;">{_render_latexish_math(group)}</span>'
+                )
+                idx = after
+                continue
+
+            if command == "underline":
+                group, after = _read_braced_group(text, next_idx)
+                if group is None:
+                    atom, after = _read_math_atom(text, next_idx)
+                    group, after = (atom or ""), after
+                rendered.append(
+                    f'<span style="text-decoration:underline;">{_render_latexish_math(group)}</span>'
+                )
+                idx = after
+                continue
+
+            if command in _MATH_SKIP_WITH_ARG:
+                _, after = _read_braced_group(text, next_idx)
+                idx = after if after > next_idx else next_idx
+                continue
+
+            if command in _MATH_SKIP_NO_ARG:
+                idx = next_idx
+                continue
+
+            if command in _MATH_SPACING:
+                rendered.append(_MATH_SPACING[command])
+                idx = next_idx
+                continue
+
             if command in _LATEX_SYMBOLS:
                 rendered.append(escape(_LATEX_SYMBOLS[command]))
-            else:
-                rendered.append(escape("\\" + command))
+                idx = next_idx
+                continue
+
+            rendered.append(escape("\\" + command))
             idx = next_idx
+            continue
+
+        if char == "&":
+            # Stray alignment markers render as a small gap.
+            rendered.append("&nbsp;")
+            idx += 1
             continue
 
         rendered.append(escape(char))
