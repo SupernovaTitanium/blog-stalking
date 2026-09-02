@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import Any
-from typing import List, Sequence
+from typing import Any, List, Sequence
 
 from loguru import logger
 from openai import OpenAI, BadRequestError
@@ -12,6 +11,30 @@ from openai import OpenAI, BadRequestError
 
 class ContentFilterTriggeredError(Exception):
     """Raised when the model returns a content-filtered response."""
+
+
+class RateLimitExhaustedError(Exception):
+    """Raised after provider rate-limit retries have been exhausted."""
+
+
+def looks_like_target_language(text: str | None, target_language: str | None) -> bool:
+    """Shared sanity check that LLM output actually matches the target language.
+
+    Only Chinese targets get a heuristic (counting CJK vs. Latin characters);
+    every other target language is accepted as-is. Short strings are accepted
+    because they may legitimately be mostly symbols or math.
+    """
+    if not text:
+        return False
+    target = (target_language or "").lower()
+    if "chinese" not in target and "中文" not in target:
+        return True
+    stripped = text.strip()
+    if len(stripped) <= 24:
+        return True
+    cjk_count = len(re.findall(r"[\u4e00-\u9fff]", stripped))
+    latin_count = len(re.findall(r"[A-Za-z]", stripped))
+    return cjk_count >= 4 or (cjk_count >= 2 and latin_count <= cjk_count * 4)
 
 
 class _MinuteRateLimiter:
@@ -58,15 +81,15 @@ class OpenAITranslator:
         nvidia_top_p: float = 0.95,
         rate_limit_retries: int = 4,
         rate_limit_base_sleep: float = 65,
+        transient_retries: int = 2,
+        transient_base_sleep: float = 5.0,
     ):
         self.provider = (provider or "openai").lower()
-        self.client = None
+        if self.provider not in ("openai", "nvidia"):
+            raise ValueError(f"Unsupported AI provider: {provider}")
         if self.provider == "openai":
-            self.client = OpenAI(
-                api_key=api_key,
-                base_url=base_url,
-            )
-        elif self.provider == "nvidia":
+            self.client = OpenAI(api_key=api_key, base_url=base_url)
+        else:
             self.client = OpenAI(
                 api_key=api_key,
                 base_url=self._coerce_nvidia_base_url(
@@ -74,20 +97,21 @@ class OpenAITranslator:
                     nvidia_api_url=nvidia_api_url,
                 ),
             )
-        elif self.provider != "nvidia":
-            raise ValueError(f"Unsupported AI provider: {provider}")
         self.api_key = api_key
         self.nvidia_max_tokens = int(nvidia_max_tokens)
         self.nvidia_top_p = float(nvidia_top_p)
         self._nvidia_limiter = _MinuteRateLimiter(nvidia_rpm)
         self.rate_limit_retries = max(0, int(rate_limit_retries))
         self.rate_limit_base_sleep = max(1.0, float(rate_limit_base_sleep))
+        self.transient_retries = max(0, int(transient_retries))
+        self.transient_base_sleep = max(0.5, float(transient_base_sleep))
         self.model = model
         self.target_language = target_language
         self.max_chars = max_chars
         self.max_total_chars = max_total_chars
         self.temperature = temperature
         self._max_filter_depth = 3
+        self._rate_limit_exhausted = False
 
     def _coerce_nvidia_base_url(
         self,
@@ -105,21 +129,29 @@ class OpenAITranslator:
             return normalized
         return self.NVIDIA_BASE_URL
 
+    # ------------------------------------------------------------------
+    # Provider calls: retry policy + response-format fallback
+    # ------------------------------------------------------------------
+
     def _chat_completion_content(
         self,
         *,
         messages: list[dict[str, str]],
         response_format: dict[str, Any] | None = None,
     ) -> tuple[str, str | None]:
-        if self.provider == "nvidia":
-            return self._with_rate_limit_retries(
-                lambda: self._nvidia_streaming_chat_completion(messages=messages)
+        if self._rate_limit_exhausted:
+            raise RateLimitExhaustedError(
+                "Provider rate limit was already exhausted; skipping API request."
             )
 
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "messages": messages,
-        }
+        if self.provider == "nvidia":
+            return self._with_provider_retries(
+                lambda: self._nvidia_streaming_chat_completion(
+                    messages=messages, response_format=response_format
+                )
+            )
+
+        kwargs: dict[str, Any] = {"model": self.model, "messages": messages}
         if response_format is not None:
             kwargs["response_format"] = response_format
         if self.temperature is not None:
@@ -130,24 +162,39 @@ class OpenAITranslator:
             choice = response.choices[0]
             return (choice.message.content or "").strip(), choice.finish_reason
 
-        return self._with_rate_limit_retries(request_once)
+        return self._with_provider_retries(request_once)
 
-    def _with_rate_limit_retries(self, operation):
-        for attempt in range(self.rate_limit_retries + 1):
+    def _with_provider_retries(self, operation):
+        rate_attempts = 0
+        transient_attempts = 0
+        while True:
             try:
                 return operation()
             except Exception as exc:
-                if not self._is_rate_limit_error(exc) or attempt >= self.rate_limit_retries:
+                is_rate_limit = self._is_rate_limit_error(exc)
+                is_transient = self._is_transient_error(exc)
+                if not is_rate_limit and not is_transient:
                     raise
-                sleep_for = self._retry_after_seconds(exc, attempt)
+                if is_rate_limit:
+                    if rate_attempts >= self.rate_limit_retries:
+                        self._rate_limit_exhausted = True
+                        raise RateLimitExhaustedError(
+                            "Provider rate limit remained active after "
+                            f"{rate_attempts + 1} request attempt(s): {exc}"
+                        ) from exc
+                    sleep_for = self._retry_after_seconds(exc, rate_attempts)
+                    rate_attempts += 1
+                else:
+                    if transient_attempts >= self.transient_retries:
+                        raise
+                    sleep_for = self.transient_base_sleep * (2**transient_attempts)
+                    transient_attempts += 1
                 logger.warning(
-                    "Rate limit hit; retrying in {:.1f}s (attempt {}/{}).",
+                    "Provider call failed ({}), retrying in {:.1f}s.",
+                    "rate limited" if is_rate_limit else "transient error",
                     sleep_for,
-                    attempt + 1,
-                    self.rate_limit_retries,
                 )
                 time.sleep(sleep_for)
-        return operation()
 
     def _is_rate_limit_error(self, exc: Exception) -> bool:
         status_code = getattr(exc, "status_code", None)
@@ -158,6 +205,29 @@ class OpenAITranslator:
             return True
         text = str(exc).lower()
         return "429" in text or "too many requests" in text or "rate limit" in text
+
+    def _is_transient_error(self, exc: Exception) -> bool:
+        status_code = getattr(exc, "status_code", None)
+        if isinstance(status_code, int) and 500 <= status_code < 600:
+            return True
+        response = getattr(exc, "response", None)
+        response_status = getattr(response, "status_code", None)
+        if isinstance(response_status, int) and 500 <= response_status < 600:
+            return True
+        text = str(exc).lower()
+        return any(
+            token in text
+            for token in (
+                "connection error",
+                "timed out",
+                "timeout",
+                "temporarily unavailable",
+                "server error",
+                "bad gateway",
+                "service unavailable",
+                "overloaded",
+            )
+        )
 
     def _retry_after_seconds(self, exc: Exception, attempt: int) -> float:
         response = getattr(exc, "response", None)
@@ -176,18 +246,22 @@ class OpenAITranslator:
         self,
         *,
         messages: list[dict[str, str]],
+        response_format: dict[str, Any] | None = None,
     ) -> tuple[str, str | None]:
         self._nvidia_limiter.wait()
         parts: list[str] = []
         finish_reason: str | None = None
-        completion = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=1 if self.temperature is None else self.temperature,
-            max_tokens=self.nvidia_max_tokens,
-            top_p=self.nvidia_top_p,
-            stream=True,
-        )
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 1 if self.temperature is None else self.temperature,
+            "max_tokens": self.nvidia_max_tokens,
+            "top_p": self.nvidia_top_p,
+            "stream": True,
+        }
+        if response_format is not None:
+            kwargs["response_format"] = response_format
+        completion = self.client.chat.completions.create(**kwargs)
         for chunk in completion:
             choices = getattr(chunk, "choices", None)
             if not choices:
@@ -199,6 +273,107 @@ class OpenAITranslator:
             if text:
                 parts.append(text)
         return "".join(parts).strip(), finish_reason
+
+    def _chat_with_format_fallback(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        formats: tuple[dict[str, Any] | None, ...],
+    ):
+        """Call the model, degrading the response format on unsupported errors.
+
+        Content-filter rejections are converted to ContentFilterTriggeredError
+        so callers apply their chunk-splitting recovery.
+        """
+        last_exc: Exception | None = None
+        for index, response_format in enumerate(formats):
+            try:
+                return self._chat_completion_content(
+                    messages=messages, response_format=response_format
+                )
+            except BadRequestError as exc:
+                if self._is_content_filter_error(exc):
+                    raise ContentFilterTriggeredError(str(exc)) from exc
+                if self._is_response_format_error(exc) and index + 1 < len(formats):
+                    logger.warning(
+                        "Model {} rejected response_format {!r}; falling back.",
+                        self.model,
+                        response_format,
+                    )
+                    last_exc = exc
+                    continue
+                raise
+        assert last_exc is not None
+        raise last_exc
+
+    # ------------------------------------------------------------------
+    # Full-text translation (per chunk)
+    # ------------------------------------------------------------------
+
+    def translate_batch(self, texts: Sequence[str]) -> List[str]:
+        translations: List[str] = []
+        for text in texts:
+            if not text:
+                translations.append("")
+                continue
+
+            chunks = self._chunk_text(text)
+            logger.debug(
+                f"Translating text with {len(chunks)} chunk(s) (total chars: {len(text)})"
+            )
+            translated_chunks: List[str] = []
+            for chunk in chunks:
+                translated_chunks.append(self._translate_chunk(chunk))
+
+            translation = "\n\n".join(part for part in translated_chunks if part).strip()
+            translations.append(translation)
+        return translations
+
+    def _translate_chunk(self, chunk: str, *, _depth: int = 0) -> str:
+        prompt = (
+            f"你是專業技術翻譯員。請將使用者提供的內容完整翻譯成 {self.target_language}。"
+            "這是全文翻譯，不是摘要，不可省略段落或關鍵資訊。"
+            "請保留原始段落結構、數學符號、LaTeX、URL、Markdown 與程式碼區塊。"
+            "必須輸出 JSON 物件，格式為 {\"translation\": \"...\"}。"
+        )
+        try:
+            content, finish_reason = self._chat_with_format_fallback(
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": chunk},
+                ],
+                formats=(
+                    self._translation_response_format(),
+                    {"type": "json_object"},
+                    None,
+                ),
+            )
+            if finish_reason == "content_filter" or not content:
+                raise ContentFilterTriggeredError(
+                    f"Model returned finish_reason={finish_reason!r}"
+                )
+            translated = self._parse_translation_text(content)
+            if translated == self.INVALID_TRANSLATION_RESPONSE:
+                logger.warning(
+                    "Structured translation response parsing failed for chunk: {}",
+                    content[:160],
+                )
+            return translated
+        except ContentFilterTriggeredError as exc:
+            return self._handle_content_filter(chunk, _depth, str(exc))
+        except RateLimitExhaustedError as exc:
+            logger.warning(
+                "Translation chunk skipped because provider rate limit was exhausted: {}",
+                self._summarize_rate_limit_reason(str(exc)),
+            )
+            return "[Translation skipped: rate limited]"
+        except Exception as exc:
+            logger.exception("Translation chunk failed")
+            return f"[Translation error: {exc}]"
+
+    # ------------------------------------------------------------------
+    # Per-feed summaries
+    # ------------------------------------------------------------------
 
     def translate_batch_by_feed(
         self,
@@ -240,101 +415,6 @@ class OpenAITranslator:
                 results[idx] = summary
         return results
 
-    def translate_batch(self, texts: Sequence[str]) -> List[str]:
-        translations: List[str] = []
-        for text in texts:
-            if not text:
-                translations.append("")
-                continue
-
-            chunks = self._chunk_text(text)
-            logger.debug(
-                f"Translating text with {len(chunks)} chunk(s) (total chars: {len(text)})"
-            )
-            translated_chunks: List[str] = []
-            for chunk in chunks:
-                translated_chunks.append(self._translate_chunk(chunk))
-
-            translation = "\n\n".join(part for part in translated_chunks if part).strip()
-            translations.append(translation)
-        return translations
-
-    def _translate_chunk(self, chunk: str, *, _depth: int = 0) -> str:
-        prompt = (
-            f"你是專業技術翻譯員。請將使用者提供的內容完整翻譯成 {self.target_language}。"
-            "這是全文翻譯，不是摘要，不可省略段落或關鍵資訊。"
-            "請保留原始段落結構、數學符號、LaTeX、URL、Markdown 與程式碼區塊。"
-            "必須輸出 JSON 物件，格式為 {\"translation\": \"...\"}。"
-        )
-        try:
-            content, finish_reason = self._chat_completion_content(
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": chunk},
-                ],
-                response_format=self._translation_response_format(),
-            )
-            if finish_reason == "content_filter" or not content:
-                raise ContentFilterTriggeredError(
-                    f"Model returned finish_reason={finish_reason!r}"
-                )
-            translated = self._parse_translation_text(content)
-            if translated == self.INVALID_TRANSLATION_RESPONSE:
-                logger.warning(
-                    "Structured translation response parsing failed for chunk: {}",
-                    content[:160],
-                )
-            return translated
-        except ContentFilterTriggeredError as exc:
-            return self._handle_content_filter(chunk, _depth, str(exc))
-        except BadRequestError as exc:
-            if self._is_content_filter_error(exc):
-                return self._handle_content_filter(chunk, _depth, str(exc))
-            if self._is_response_format_error(exc):
-                return self._translate_chunk_json_object(chunk, _depth=_depth)
-            logger.exception("Translation chunk failed")
-            return f"[Translation error: {exc}]"
-        except Exception as exc:
-            logger.exception("Translation chunk failed")
-            return f"[Translation error: {exc}]"
-
-    def _translate_chunk_json_object(self, chunk: str, *, _depth: int = 0) -> str:
-        prompt = (
-            f"你是專業技術翻譯員。請將使用者提供的內容完整翻譯成 {self.target_language}。"
-            "這是全文翻譯，不是摘要，不可省略段落或關鍵資訊。"
-            "請保留原始段落結構、數學符號、LaTeX、URL、Markdown 與程式碼區塊。"
-            "必須輸出 JSON 物件，格式為 {\"translation\": \"...\"}。"
-        )
-        try:
-            content, finish_reason = self._chat_completion_content(
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": chunk},
-                ],
-                response_format={"type": "json_object"},
-            )
-            if finish_reason == "content_filter" or not content:
-                raise ContentFilterTriggeredError(
-                    f"Model returned finish_reason={finish_reason!r}"
-                )
-            translated = self._parse_translation_text(content)
-            if translated == self.INVALID_TRANSLATION_RESPONSE:
-                logger.warning(
-                    "Structured translation (json_object) parsing failed for chunk: {}",
-                    content[:160],
-                )
-            return translated
-        except ContentFilterTriggeredError as exc:
-            return self._handle_content_filter(chunk, _depth, str(exc))
-        except BadRequestError as exc:
-            if self._is_content_filter_error(exc):
-                return self._handle_content_filter(chunk, _depth, str(exc))
-            logger.exception("Translation chunk failed (json_object fallback)")
-            return f"[Translation error: {exc}]"
-        except Exception as exc:
-            logger.exception("Translation chunk failed (json_object fallback)")
-            return f"[Translation error: {exc}]"
-
     def _translate_feed_once(self, feed_key: str, texts: Sequence[str]) -> List[str]:
         prepared = self._prepare_texts_for_feed(texts)
         if not prepared:
@@ -351,12 +431,16 @@ class OpenAITranslator:
         user_content = "\n\n".join(user_parts)
 
         try:
-            content, finish_reason = self._chat_completion_content(
+            content, finish_reason = self._chat_with_format_fallback(
                 messages=[
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": user_content},
                 ],
-                response_format=self._feed_response_format(),
+                formats=(
+                    self._feed_response_format(),
+                    {"type": "json_object"},
+                    None,
+                ),
             )
             if finish_reason == "content_filter" or not content:
                 raise ContentFilterTriggeredError(
@@ -371,74 +455,15 @@ class OpenAITranslator:
                 self._summarize_filter_reason(str(exc)),
             )
             return ["[Translation skipped: blocked by content filter]"] * len(prepared)
-        except BadRequestError as exc:
-            if self._is_content_filter_error(exc):
-                logger.warning(
-                    "Content filter blocked feed summary for {}: {}",
-                    feed_key,
-                    self._summarize_filter_reason(str(exc)),
-                )
-                return ["[Translation skipped: blocked by content filter]"] * len(prepared)
-            if self._is_response_format_error(exc):
-                logger.warning(
-                    "Model {} does not support json_schema response format; falling back to json_object.",
-                    self.model,
-                )
-                return self._translate_feed_once_json_object(feed_key, prepared)
-            logger.exception("Feed summary failed for {}", feed_key)
-            return [f"[Translation error: {exc}]"] * len(prepared)
-        except Exception as exc:
-            logger.exception("Feed summary failed for {}", feed_key)
-            return [f"[Translation error: {exc}]"] * len(prepared)
-
-    def _translate_feed_once_json_object(
-        self,
-        feed_key: str,
-        prepared: Sequence[str],
-    ) -> List[str]:
-        prompt = (
-            f"請將下列技術文章摘要成不超過 200 個{self.target_language}字詞，保留核心概念、關鍵步驟與主要結論，"
-            "避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。"
-            "必須輸出 JSON 物件，格式為 {\"summaries\": [\"...\", \"...\"]}，順序需與輸入文章一致。"
-        )
-        user_parts = [f"【Feed】{feed_key}", "【輸入】"]
-        for idx, text in enumerate(prepared, 1):
-            user_parts.append(f"【文章 {idx}】\n{text}")
-        user_content = "\n\n".join(user_parts)
-
-        try:
-            content, finish_reason = self._chat_completion_content(
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": user_content},
-                ],
-                response_format={"type": "json_object"},
-            )
-            if finish_reason == "content_filter" or not content:
-                raise ContentFilterTriggeredError(
-                    f"Model returned finish_reason={finish_reason!r}"
-                )
-            summaries = self._parse_feed_summaries(content, len(prepared))
-            return [self._normalize_summary(s) for s in summaries]
-        except ContentFilterTriggeredError as exc:
+        except RateLimitExhaustedError as exc:
             logger.warning(
-                "Content filter blocked feed summary for {}: {}",
+                "Feed summary skipped for {} because provider rate limit was exhausted: {}",
                 feed_key,
-                self._summarize_filter_reason(str(exc)),
+                self._summarize_rate_limit_reason(str(exc)),
             )
-            return ["[Translation skipped: blocked by content filter]"] * len(prepared)
-        except BadRequestError as exc:
-            if self._is_content_filter_error(exc):
-                logger.warning(
-                    "Content filter blocked feed summary for {}: {}",
-                    feed_key,
-                    self._summarize_filter_reason(str(exc)),
-                )
-                return ["[Translation skipped: blocked by content filter]"] * len(prepared)
-            logger.exception("Feed summary failed for {} (json_object fallback)", feed_key)
-            return [f"[Translation error: {exc}]"] * len(prepared)
+            return ["[Translation skipped: rate limited]"] * len(prepared)
         except Exception as exc:
-            logger.exception("Feed summary failed for {} (json_object fallback)", feed_key)
+            logger.exception("Feed summary failed for {}", feed_key)
             return [f"[Translation error: {exc}]"] * len(prepared)
 
     def _prepare_texts_for_feed(self, texts: Sequence[str]) -> List[str]:
@@ -463,6 +488,10 @@ class OpenAITranslator:
             head = head[:cut]
         return head.strip()
 
+    # ------------------------------------------------------------------
+    # Response parsing
+    # ------------------------------------------------------------------
+
     def _parse_feed_summaries(self, raw: str, expected: int) -> List[str]:
         raw = (raw or "").strip()
         if not raw:
@@ -478,28 +507,19 @@ class OpenAITranslator:
             parsed = self._extract_object_json(raw) or self._extract_bracket_json(raw)
 
         summaries: List[str] = []
-        if isinstance(parsed, dict) and isinstance(parsed.get("summaries"), list):
-            for item in parsed["summaries"]:
-                if not isinstance(item, str):
-                    continue
-                summary = item.strip()
-                if not summary:
-                    continue
-                if not self._is_expected_language(summary):
-                    summaries.append(self.INVALID_STRUCTURED_RESPONSE)
-                    continue
-                summaries.append(summary)
-        elif isinstance(parsed, list):
-            for item in parsed:
-                if not isinstance(item, str):
-                    continue
-                summary = item.strip()
-                if not summary:
-                    continue
-                if not self._is_expected_language(summary):
-                    summaries.append(self.INVALID_STRUCTURED_RESPONSE)
-                    continue
-                summaries.append(summary)
+        if isinstance(parsed, (dict, list)):
+            items = parsed.get("summaries", []) if isinstance(parsed, dict) else parsed
+            if isinstance(items, list):
+                for item in items:
+                    if not isinstance(item, str):
+                        continue
+                    summary = item.strip()
+                    if not summary:
+                        continue
+                    if not looks_like_target_language(summary, self.target_language):
+                        summaries.append(self.INVALID_STRUCTURED_RESPONSE)
+                        continue
+                    summaries.append(summary)
 
         if not summaries:
             logger.warning("Structured translation response parsing failed: {}", raw[:160])
@@ -566,7 +586,7 @@ class OpenAITranslator:
             translation = parsed.get("translation")
             if isinstance(translation, str) and translation.strip():
                 value = translation.strip()
-                if not self._is_expected_language(value):
+                if not looks_like_target_language(value, self.target_language):
                     return self.INVALID_TRANSLATION_RESPONSE
                 return value
 
@@ -582,19 +602,6 @@ class OpenAITranslator:
         except Exception:
             return None
 
-    def _is_expected_language(self, text: str) -> bool:
-        if not text:
-            return False
-        target = (self.target_language or "").lower()
-        if "chinese" not in target and "中文" not in target:
-            return True
-        if len(text.strip()) <= 24:
-            return True
-
-        cjk_count = len(re.findall(r"[\u4e00-\u9fff]", text))
-        latin_count = len(re.findall(r"[A-Za-z]", text))
-        return cjk_count >= 8 or (cjk_count >= 4 and cjk_count * 3 >= latin_count)
-
     def _extract_bracket_json(self, raw: str):
         match = re.search(r'\[.*\]', raw, flags=re.DOTALL)
         if not match:
@@ -605,23 +612,6 @@ class OpenAITranslator:
         except Exception:
             return None
 
-    def _parse_numbered_list(self, raw: str) -> List[str]:
-        items: List[str] = []
-        current: List[str] = []
-        for line in raw.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            if re.match(r'^\s*\d+[\.\)、\)]\s*', line):
-                if current:
-                    items.append(" ".join(current).strip())
-                    current = []
-                line = re.sub(r'^\s*\d+[\.\)、\)]\s*', '', line).strip()
-            current.append(line)
-        if current:
-            items.append(" ".join(current).strip())
-        return items
-
     def _normalize_summary(self, text: str) -> str:
         summary = (text or "").strip()
         if summary.startswith(("「", "“", "\"")) and summary.endswith(("」", "”", "\"")):
@@ -629,6 +619,10 @@ class OpenAITranslator:
         if len(summary) > 200:
             summary = summary[:200].rstrip()
         return summary
+
+    # ------------------------------------------------------------------
+    # Content-filter recovery
+    # ------------------------------------------------------------------
 
     def _handle_content_filter(self, chunk: str, depth: int, reason: str) -> str:
         can_retry = depth < self._max_filter_depth and len(chunk) > 200
@@ -770,6 +764,13 @@ class OpenAITranslator:
             return "Content filter"
         if "content management policy" in reason or "ResponsibleAIPolicyViolation" in reason:
             return "Policy violation"
+        if len(reason) > 180:
+            return reason[:177] + "..."
+        return reason
+
+    def _summarize_rate_limit_reason(self, reason: str) -> str:
+        if not reason:
+            return "Rate limit exhausted"
         if len(reason) > 180:
             return reason[:177] + "..."
         return reason

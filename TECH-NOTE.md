@@ -2,16 +2,22 @@
 
 ## High-level Flow
 1) Entry (`main.py`): load feed configs (`feeds/blogs.json` + optional `FEED_URL`/`BLOG_FEED_URL`), de-duplicate, respect `WINDOW_HOURS`, `MAX_POST_NUM`, `MAX_POSTS_PER_FEED`.
-2) Fetch (`feeds.fetch_recent_posts`): parse feeds with `feedparser`, extract timestamps, HTML, text; skip stale/untimestamped items; build `FeedPost` with source metadata.
-3) Summarize (`translation.py`): OpenAI Chat prompt (200-char Chinese summary, preserve math/LaTeX/URLs/Markdown/code; no subjective comments). Batch over posts; chunk if too long; retries on content filter.
-4) Render email (`construct_email.py`): build HTML with quick overview + per-post detail blocks, anchors for jump-to-detail/back-to-summary, centered `max-width:900px` container, consistent spacing/line-height.
-5) Send (`construct_email.send_email`): MIMEText HTML via SMTP (STARTTLS), subject prefix + datestamp.
+2) Run state (`run_state.py`): load `STATE_FILE` (default `state/last_run.json`); the fetch cutoff is `min(now - window, max(last window_end - 10min, now - STATE_MAX_BACKTRACK_HOURS))`, so a delayed schedule or a failed day never leaves gaps; already-delivered post keys are filtered out (no duplicate emails on overlapping windows). After a successful run the state is saved and the workflow commits it back (`Commit run state` step; `STATE_FILE=none` disables).
+3) Fetch (`feeds.fetch_recent_posts`): feeds are fetched concurrently (`FETCH_WORKERS`, default 8); all HTTP goes through `urllib` with a 20s timeout and gzip/deflate decompression (non-HTTP failures retry up to 3x); `feedparser` only ever parses pre-fetched bytes. Per feed, recovery (HTML `<link>` discovery, site URL probe, suffix candidates) is bounded by `max_candidates=8` URLs and a 120s deadline. Extract timestamps, HTML, text; skip stale/untimestamped items; build `FeedPost` with source metadata.
+4) Summarize (`translation.py`): OpenAI Chat prompt (≤200 target-language words; preserve math/LaTeX/URLs/Markdown/code; no subjective comments). Batch per feed; chunk long posts; retry on 429 (Retry-After aware) and on transient errors (5xx/timeout/connection, exponential backoff); content-filter responses split the chunk and retry; response-format support degrades json_schema → json_object → none.
+5) Render email (`construct_email.py`): feed HTML is sanitized with an `nh3` allowlist and post URLs are escaped; pinned sources (`"pinned": true` in the catalog) float to the top; quick overview + per-post detail blocks with anchors. Large digests split into multiple emails (`EMAIL_MAX_POSTS`/`EMAIL_MAX_BYTES`), each self-contained (own summary + full text) to stay under Gmail's ~102KB clipping limit.
+6) Send (`construct_email.send_email`): MIMEText HTML via SMTP (STARTTLS with SMTPS fallback), connections always closed in `finally`. Every rendered email is archived to `EMAIL_HTML_DIR` (uploaded as a workflow artifact) before sending; any failed part aborts the run *before* run state is persisted, so the next run re-delivers.
+7) Persist (`run_state.py`): on full success the window end and delivered post keys are saved and committed back by the workflow.
+
+## Deduplication
+- Within a run and across runs, a post's identity is its normalized article URL (`_post_key` in `main.py`): scheme/host lowercased, `www.` and trailing slash stripped, tracking params (`utm_*`, `ref`, `fbclid`, `gclid`) dropped. The same story arriving via an author's blog and their Mastodon cross-post collapses to one digest entry.
 
 ## Key Files
-- `main.py`: CLI/env config, feed loading, error logging (`--failure_log`), deduplication, orchestration.
+- `main.py`: CLI/env config, feed loading, concurrent fetching, URL-normalized dedup, digest email batching, error logging (`--failure_log`), orchestration (structured into testable functions).
+- `run_state.py`: run-state persistence (window end + seen post keys, capped at 1000) and cutoff computation.
 - `feeds.py`: RSS/Atom parsing, datetime extraction, HTML/text extraction, per-feed limiting, `FeedPost` dataclass.
 - `translation.py`: OpenAI client wrapper; Chinese summary prompt; chunking and content-filter handling.
-- `construct_email.py`: HTML/CSS templates, anchors (`#overview`, per-post ids), inline “回到摘要” link beside titles, no summary truncation.
+- `construct_email.py`: HTML/CSS templates, `nh3` sanitization of feed HTML, pinned-first ordering, anchors (`#overview`, per-post ids), inline “回到摘要” link beside titles, no summary truncation, hardened SMTP send.
 - `feeds/blogs.json`: primary feed catalog (includes Terence Tao Mastodon + blog); `feeds/test-blogs.json`: small debug set.
 - `INIT.md`: quick-start; `OPEN_SOURCE.md`: open-source readiness.
 - Workflows: `.github/workflows/main.yml` (nightly/manual), `.github/workflows/test.yml` (debug feeds, log artifacts).
@@ -19,7 +25,9 @@
 ## Configuration (env/CLI)
 - Feeds: `FEED_LIST`, `FEED_URL`, `BLOG_FEED_URL`
 - Windows/limits: `WINDOW_HOURS`, `MAX_POST_NUM`, `MAX_POSTS_PER_FEED`
-- Output: `TARGET_LANGUAGE`, `EMAIL_SUBJECT_PREFIX`, `FAILURE_LOG`
+- Fetching: `FETCH_WORKERS`
+- Run state: `STATE_FILE` (`none` disables), `STATE_MAX_BACKTRACK_HOURS`
+- Output: `TARGET_LANGUAGE`, `EMAIL_SUBJECT_PREFIX`, `EMAIL_MAX_POSTS`, `EMAIL_MAX_BYTES`, `EMAIL_HTML_DIR`, `FAILURE_LOG`
 - OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` (optional)
 - SMTP: `SMTP_SERVER`, `SMTP_PORT`, `SENDER`, `SENDER_PASSWORD`, `RECEIVER`
 

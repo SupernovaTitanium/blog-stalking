@@ -7,14 +7,14 @@ on:
 jobs:
   calculate-and-send:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
-        with:
-          version: '0.5.4'
 
       - name: Run script
         env:
@@ -23,9 +23,16 @@ jobs:
           BLOG_FEED_URL: ${{ vars.BLOG_FEED_URL || '' }}
           WINDOW_HOURS: ${{ vars.WINDOW_HOURS || '24' }}
           MAX_POST_NUM: ${{ vars.MAX_POST_NUM || '-1' }}
+          MAX_POSTS_PER_FEED: ${{ vars.MAX_POSTS_PER_FEED || '2' }}
           SEND_EMPTY: ${{ vars.SEND_EMPTY || 'false' }}
           TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE || 'Chinese (Traditional)' }}
           EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX || 'Blog Pusher Digest' }}
+          EMAIL_MAX_POSTS: ${{ vars.EMAIL_MAX_POSTS || '15' }}
+          EMAIL_MAX_BYTES: ${{ vars.EMAIL_MAX_BYTES || '90000' }}
+          EMAIL_HTML_DIR: ${{ vars.EMAIL_HTML_DIR || 'artifacts' }}
+          FETCH_WORKERS: ${{ vars.FETCH_WORKERS || '8' }}
+          STATE_FILE: ${{ vars.STATE_FILE || 'state/last_run.json' }}
+          STATE_MAX_BACKTRACK_HOURS: ${{ vars.STATE_MAX_BACKTRACK_HOURS || '72' }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || secrets.OPENAI_MODEL || '' }}
           OPENAI_API_BASE: ${{ vars.OPENAI_API_BASE || secrets.OPENAI_API_BASE || '' }}
@@ -41,3 +48,28 @@ jobs:
           RECEIVER: ${{ secrets.RECEIVER }}
         run: |
           uv run main.py
+
+      - name: Upload digest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ github.run_id }}
+          path: artifacts
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Commit run state
+        if: success()
+        env:
+          STATE_FILE: ${{ vars.STATE_FILE || 'state/last_run.json' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f "$STATE_FILE" ]; then
+            git add "$STATE_FILE"
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: record digest run state [skip ci]"
+              git pull --rebase origin "$GITHUB_REF_NAME" || true
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi

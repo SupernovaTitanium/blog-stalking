@@ -14,8 +14,6 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
-        with:
-          version: '0.5.4'
 
       - name: Compute October window
         id: october-window
@@ -46,6 +44,7 @@ jobs:
           SEND_EMPTY: ${{ vars.SEND_EMPTY || 'false' }}
           TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE || 'Chinese (Traditional)' }}
           EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX || 'Blog Pusher Digest' }}
+          STATE_FILE: none
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || secrets.OPENAI_MODEL || '' }}
           OPENAI_API_BASE: ${{ vars.OPENAI_API_BASE || secrets.OPENAI_API_BASE || '' }}

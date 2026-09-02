@@ -38,8 +38,17 @@ class _DummyOpenAI:
 
 fake_openai.OpenAI = _DummyOpenAI
 fake_openai.BadRequestError = _DummyBadRequestError
-sys.modules.setdefault("openai", fake_openai)
 
+# Force the fake module even when the real openai was already imported by an
+# earlier test file (e.g. test_main imports main -> translation -> openai),
+# then reload so translation binds to the fake client that records kwargs.
+sys.modules["openai"] = fake_openai
+
+import importlib
+
+import translation as _translation_module
+
+_translation_module = importlib.reload(_translation_module)
 from translation import OpenAITranslator
 
 
@@ -255,6 +264,36 @@ class FeedTranslationJsonSchemaTest(unittest.TestCase):
             translator.client.kwargs["base_url"],
             "https://integrate.api.nvidia.com/v1",
         )
+
+    def test_nvidia_rate_limit_exhaustion_opens_skip_circuit(self) -> None:
+        translator = OpenAITranslator(
+            api_key="nv-key",
+            provider="nvidia",
+            model="z-ai/glm-5.2",
+            target_language="Chinese (Traditional)",
+            rate_limit_retries=1,
+            rate_limit_base_sleep=1,
+        )
+        translator._nvidia_limiter.wait = MagicMock()
+        create_mock = MagicMock(
+            side_effect=[
+                _DummyRateLimitError("Error code: 429 - Too Many Requests"),
+                _DummyRateLimitError("Error code: 429 - Too Many Requests"),
+            ]
+        )
+        translator.client.chat.completions.create = create_mock
+
+        with patch("translation.time.sleep") as sleep_mock:
+            summaries = translator.translate_batch_by_feed(
+                ["source text"],
+                ["feed://test"],
+            )
+            translations = translator.translate_batch(["source text"])
+
+        self.assertEqual(summaries, ["[Translation skipped: rate limited]"])
+        self.assertEqual(translations, ["[Translation skipped: rate limited]"])
+        self.assertEqual(create_mock.call_count, 2)
+        sleep_mock.assert_called_once_with(1.0)
 
 
 if __name__ == "__main__":

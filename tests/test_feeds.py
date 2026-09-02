@@ -64,6 +64,16 @@ class ExtractEntryDatetimeTest(unittest.TestCase):
     def test_returns_none_when_no_timestamp_fields(self) -> None:
         self.assertIsNone(_extract_entry_datetime({}))
 
+    def test_handles_pre_epoch_timestamp_without_crashing(self) -> None:
+        # datetime.fromtimestamp rejects negative values on Windows with
+        # OSError [Errno 22]; such entries must be skipped (None) or produce
+        # their pre-1970 datetime (Linux) — but never crash the feed.
+        pre_epoch = time.struct_time((1969, 12, 30, 0, 0, 0, 1, 363, 0))
+        entry = {"published_parsed": pre_epoch}
+        parsed = _extract_entry_datetime(entry)
+        if parsed is not None:
+            self.assertLess(parsed.year, 1970)
+
 
 class SanitizeFeedPayloadTest(unittest.TestCase):
     def test_preserves_escaped_html_inside_xml_text(self) -> None:
@@ -88,36 +98,25 @@ class ParseFeedRecoveryTest(unittest.TestCase):
             b'<link rel="alternate" type="application/rss+xml" href="/rss.xml"/>'
             b"</head><body>fallback</body></html>"
         )
+        rss_payload = (
+            b'<rss version="2.0"><channel><title>Example</title>'
+            b"<item><title>ok</title></item>"
+            b"</channel></rss>"
+        )
 
-        def fake_parse(input_data, **kwargs):
-            if isinstance(input_data, (bytes, bytearray)):
-                return FeedParserDict(
-                    bozo=True,
-                    bozo_exception=Exception("bad xml"),
-                    entries=[],
-                    feed={},
-                )
-            if input_data == "https://example.com/rss.xml":
-                return FeedParserDict(
-                    bozo=False,
-                    entries=[{"title": "ok"}],
-                    feed={"title": "Example"},
-                )
-            return FeedParserDict(
-                bozo=True,
-                bozo_exception=Exception("bad xml"),
-                entries=[],
-                feed={},
+        def fake_fetch(url):
+            if url == "https://example.com/rss.xml":
+                return rss_payload
+            return html_payload
+
+        with patch("feeds._fetch_feed_bytes", side_effect=fake_fetch):
+            parsed = _parse_feed(
+                "https://example.com/feed",
+                site_url="https://example.com",
             )
 
-        with patch("feeds.feedparser.parse", side_effect=fake_parse):
-            with patch("feeds._fetch_feed_bytes", return_value=html_payload):
-                parsed = _parse_feed(
-                    "https://example.com/feed",
-                    site_url="https://example.com",
-                )
-
         self.assertEqual(len(parsed.entries), 1)
+        self.assertEqual(parsed.entries[0]["title"], "ok")
 
     def test_prefers_sanitized_parse_for_recoverable_bozo_feed(self) -> None:
         clean_payload = b"<rss><channel><item><title>ok</title></item></channel></rss>"
@@ -142,6 +141,47 @@ class ParseFeedRecoveryTest(unittest.TestCase):
 
         self.assertFalse(parsed.bozo)
         self.assertEqual(parsed.entries[0]["title"], "clean")
+
+
+class ParseFeedBudgetTest(unittest.TestCase):
+    def test_stops_after_max_candidate_urls(self) -> None:
+        # HTML page with no alternate links forces the suffix-candidate path;
+        # the candidate list is far longer than the budget.
+        html_payload = b"<html><head></head><body>no links here</body></html>"
+
+        with patch("feeds._fetch_feed_bytes", return_value=html_payload):
+            with self.assertRaises(RuntimeError) as ctx:
+                _parse_feed("https://example.com/feed", max_candidates=4)
+
+        self.assertIn("exceeded 4 candidate URLs", str(ctx.exception))
+
+    def test_stops_when_deadline_is_exhausted(self) -> None:
+        html_payload = b"<html><head></head><body>no links here</body></html>"
+
+        with patch("feeds._fetch_feed_bytes", return_value=html_payload):
+            with self.assertRaises(RuntimeError) as ctx:
+                _parse_feed(
+                    "https://example.com/feed",
+                    deadline=time.monotonic() - 1,
+                )
+
+        self.assertIn("time budget exhausted", str(ctx.exception))
+
+    def test_returns_empty_valid_feed_without_recovery(self) -> None:
+        empty_payload = b'<rss version="2.0"><channel><title>Empty</title></channel></rss>'
+        fetch_calls: list[str] = []
+
+        def allow_single_fetch(url):
+            fetch_calls.append(url)
+            if len(fetch_calls) > 1:
+                raise AssertionError("recovery should not fetch anything")
+            return empty_payload
+
+        with patch("feeds._fetch_feed_bytes", side_effect=allow_single_fetch):
+            parsed = _parse_feed("https://example.com/feed")
+
+        self.assertFalse(parsed.bozo)
+        self.assertEqual(len(parsed.entries), 0)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import calendar
+import gzip
 import re
 import time
 import urllib.error
 import urllib.request
+import zlib
 from urllib.parse import urljoin, urlparse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -35,6 +37,8 @@ class FeedPost:
     source_accent: Optional[str] = None
     summary: Optional[str] = None
     translation: Optional[str] = None
+    pinned: bool = False
+    timestamp_known: bool = True
 
 
 _FEED_HEADERS = {
@@ -62,15 +66,23 @@ _FEED_SUFFIXES = (
     "rss20.xml",
 )
 
+# Feeds occasionally omit entry timestamps. Entries near the top of such
+# feeds are usually recent, so include the first few as "now" and let the
+# run-state seen-list suppress repeats; undated entries never evict dated
+# ones from the per-feed limit.
+_UNDATED_HEAD_LIMIT = 5
+
 
 def _parse_datetime(struct_time: time.struct_time | None) -> datetime | None:
     if struct_time is None:
         return None
     try:
         timestamp = calendar.timegm(struct_time)
-    except (OverflowError, ValueError):
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    except (OverflowError, ValueError, OSError):
+        # Pre-1970 or out-of-range dates raise on Windows (fromtimestamp
+        # rejects negative values); treat them as missing timestamps.
         return None
-    return datetime.fromtimestamp(timestamp, tz=timezone.utc)
 
 
 def _extract_entry_datetime(entry: Mapping[str, Any]) -> datetime | None:
@@ -82,10 +94,37 @@ def _extract_entry_datetime(entry: Mapping[str, Any]) -> datetime | None:
     return None
 
 
-def _fetch_feed_bytes(url: str) -> bytes:
+def _fetch_feed_bytes_once(url: str) -> bytes:
     request = urllib.request.Request(url, headers=_FEED_HEADERS)
     with urllib.request.urlopen(request, timeout=20) as response:
-        return response.read()
+        data = response.read()
+        encoding = (response.headers.get("Content-Encoding") or "").lower()
+    if encoding in ("gzip", "x-gzip"):
+        data = gzip.decompress(data)
+    elif encoding == "deflate":
+        try:
+            data = zlib.decompress(data)
+        except zlib.error:
+            data = zlib.decompress(data, -zlib.MAX_WBITS)
+    return data
+
+
+def _fetch_feed_bytes(url: str, attempts: int = 3) -> bytes:
+    # Transient low-level failures (DNS races under concurrency, connection
+    # resets) deserve a retry; HTTP error statuses are server responses and
+    # are re-raised untouched.
+    last_exc: Exception | None = None
+    for attempt in range(max(1, attempts)):
+        try:
+            return _fetch_feed_bytes_once(url)
+        except urllib.error.HTTPError:
+            raise
+        except Exception as exc:
+            last_exc = exc
+            if attempt < attempts - 1:
+                time.sleep(1.0 * (attempt + 1))
+    assert last_exc is not None
+    raise last_exc
 
 
 def _sanitize_feed_payload(payload: bytes) -> bytes:
@@ -174,93 +213,105 @@ def _with_www(url: str) -> str | None:
     return parsed._replace(netloc=f"www.{parsed.netloc}").geturl()
 
 
+class _FeedBudgetExceeded(RuntimeError):
+    """Raised when a feed exhausts its candidate-URL or time budget.
+
+    Recovery loops must not swallow this: once the budget is gone, every
+    remaining candidate would fail identically.
+    """
+
+
+def _fetch_payload_with_www_fallback(url: str, seen: set[str]) -> tuple[bytes, str]:
+    try:
+        return _fetch_feed_bytes(url), url
+    except Exception:
+        fallback_url = _with_www(url)
+        if fallback_url and fallback_url not in seen:
+            seen.add(fallback_url)
+            return _fetch_feed_bytes(fallback_url), fallback_url
+        raise
+
+
 def _parse_feed(
     feed_url: str,
     *,
     site_url: str | None = None,
     seen: set[str] | None = None,
+    max_candidates: int = 8,
+    deadline: float | None = None,
 ) -> feedparser.FeedParserDict:
     if seen is None:
         seen = set()
     if feed_url in seen:
         raise RuntimeError(f"Failed to parse feed {feed_url}: duplicate candidate")
     seen.add(feed_url)
-    feed = feedparser.parse(
-        feed_url,
-        request_headers=_FEED_HEADERS,
-        agent=_FEED_HEADERS["User-Agent"],
-    )
+    if len(seen) > max(1, max_candidates):
+        raise _FeedBudgetExceeded(
+            f"Failed to parse feed {feed_url}: exceeded {max_candidates} candidate URLs"
+        )
+    if deadline is not None and time.monotonic() > deadline:
+        raise _FeedBudgetExceeded(
+            f"Failed to parse feed {feed_url}: per-feed time budget exhausted"
+        )
+
+    try:
+        payload, resolved_url = _fetch_payload_with_www_fallback(feed_url, seen)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to parse feed {feed_url}: {exc}") from exc
+
+    # Parse pre-fetched bytes instead of letting feedparser fetch the URL:
+    # every request then runs under our own 20s timeout.
+    feed = feedparser.parse(payload)
     if feed.bozo:
-        bozo_exc = getattr(feed, "bozo_exception", None)
-        payload: bytes | None = None
+        sanitized_feed = feedparser.parse(_sanitize_feed_payload(payload))
+        sanitized_entries = getattr(sanitized_feed, "entries", None)
+        if sanitized_entries and (
+            not sanitized_feed.bozo or not getattr(feed, "entries", None)
+        ):
+            feed = sanitized_feed
+        elif not getattr(feed, "entries", None):
+            feed = sanitized_feed
+
+    entries = getattr(feed, "entries", None)
+    html_text = "" if entries else payload.decode("utf-8", errors="replace")
+    # feedparser parses HTML pages leniently into empty, non-bozo feeds; we
+    # lost its content-type check by parsing pre-fetched bytes, so detect
+    # HTML pages ourselves to let link discovery kick in.
+    if entries or (not feed.bozo and not _looks_like_html(html_text)):
+        return feed
+
+    candidates: list[str] = []
+    if _looks_like_html(html_text):
+        candidates.extend(_extract_feed_links(html_text, resolved_url))
+    if site_url:
         try:
-            payload = _fetch_feed_bytes(feed_url)
-        except Exception as exc:
-            fallback_url = _with_www(feed_url)
-            if fallback_url and fallback_url not in seen:
-                try:
-                    payload = _fetch_feed_bytes(fallback_url)
-                    feed_url = fallback_url
-                    seen.add(fallback_url)
-                except Exception:
-                    payload = None
-            if payload is None:
-                if bozo_exc and not getattr(feed, "entries", None):
-                    raise RuntimeError(
-                        f"Failed to parse feed {feed_url}: {bozo_exc}"
-                    ) from exc
-                if not getattr(feed, "entries", None):
-                    raise RuntimeError(f"Failed to parse feed {feed_url}: {exc}") from exc
+            site_payload = _fetch_feed_bytes(site_url)
+            site_text = site_payload.decode("utf-8", errors="replace")
+            if _looks_like_html(site_text):
+                candidates.extend(_extract_feed_links(site_text, site_url))
+        except Exception:
+            pass
+    candidates.extend(_candidate_feed_urls(resolved_url, site_url))
 
-        if payload is not None:
-            sanitized_feed = feedparser.parse(_sanitize_feed_payload(payload))
-            sanitized_entries = getattr(sanitized_feed, "entries", None)
-            if sanitized_entries and (
-                not sanitized_feed.bozo or not getattr(feed, "entries", None)
-            ):
-                feed = sanitized_feed
-            elif not getattr(feed, "entries", None):
-                feed = sanitized_feed
-
-        if feed.bozo and not getattr(feed, "entries", None):
-            html_text = payload.decode("utf-8", errors="replace")
-            if _looks_like_html(html_text):
-                for candidate in _extract_feed_links(html_text, feed_url):
-                    if candidate in seen:
-                        continue
-                    try:
-                        return _parse_feed(candidate, site_url=site_url, seen=seen)
-                    except Exception:
-                        continue
-            if site_url:
-                try:
-                    site_payload = _fetch_feed_bytes(site_url)
-                    site_text = site_payload.decode("utf-8", errors="replace")
-                    if _looks_like_html(site_text):
-                        for candidate in _extract_feed_links(site_text, site_url):
-                            if candidate in seen:
-                                continue
-                            try:
-                                return _parse_feed(
-                                    candidate, site_url=site_url, seen=seen
-                                )
-                            except Exception:
-                                continue
-                except urllib.error.URLError:
-                    pass
-                except Exception:
-                    pass
-            for candidate in _candidate_feed_urls(feed_url, site_url):
-                if candidate in seen:
-                    continue
-                try:
-                    return _parse_feed(candidate, site_url=site_url, seen=seen)
-                except Exception:
-                    continue
-            raise RuntimeError(
-                f"Failed to parse feed {feed_url}: {feed.bozo_exception}"
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        try:
+            return _parse_feed(
+                candidate,
+                site_url=site_url,
+                seen=seen,
+                max_candidates=max_candidates,
+                deadline=deadline,
             )
-    return feed
+        except _FeedBudgetExceeded:
+            raise
+        except Exception:
+            continue
+    raise RuntimeError(
+        f"Failed to parse feed {feed_url}: no entries found "
+        f"({feed.bozo_exception if feed.bozo else 'empty feed'})"
+    )
 
 
 def _coerce_html_value(candidate: Any) -> str:
@@ -303,9 +354,19 @@ def fetch_recent_posts(
     window_hours: int = 24,
     limit: Optional[int] = None,
     site_url: str | None = None,
+    *,
+    cutoff: Optional[datetime] = None,
+    max_candidates: int = 8,
+    fetch_budget_seconds: float = 120.0,
 ) -> List[FeedPost]:
     logger.debug(f"Loading feed from {feed_url}")
-    feed = _parse_feed(feed_url, site_url=site_url)
+    deadline = time.monotonic() + fetch_budget_seconds
+    feed = _parse_feed(
+        feed_url,
+        site_url=site_url,
+        max_candidates=max_candidates,
+        deadline=deadline,
+    )
     if feed.bozo:
         if getattr(feed, "entries", None):
             logger.warning(
@@ -314,20 +375,36 @@ def fetch_recent_posts(
         else:
             raise RuntimeError(f"Failed to parse feed {feed_url}: {feed.bozo_exception}")
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+    if cutoff is None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
     posts: List[FeedPost] = []
     feed_title = feed.feed.get("title") or feed.feed.get("link") or feed_url
-    for entry in feed.entries:
+    fetched_at = datetime.now(timezone.utc)
+    for index, entry in enumerate(feed.entries):
         published = _extract_entry_datetime(entry)
+        timestamp_known = published is not None
         if published is None:
-            logger.debug("Skipping entry without timestamp from {}", feed_url)
-            continue
+            if index < _UNDATED_HEAD_LIMIT:
+                published = fetched_at
+                logger.info(
+                    "Including untimestamped entry at position {} from {}",
+                    index,
+                    feed_url,
+                )
+            else:
+                logger.debug("Skipping entry without timestamp from {}", feed_url)
+                continue
         if published < cutoff:
             continue
 
         link = getattr(entry, "link", feed.feed.get("link"))
         if not link:
             continue
+        if not urlparse(link).scheme:
+            # Relative entry links are resolved against the feed URL because
+            # we parse pre-fetched bytes (feedparser would have done this had
+            # it fetched the URL itself); absolute links pass through as-is.
+            link = urljoin(feed_url, link)
 
         raw_html = _extract_entry_html(entry)
         soup = BeautifulSoup(raw_html or "", "html.parser")
@@ -356,10 +433,15 @@ def fetch_recent_posts(
                 content_text=text or title,
                 source=source,
                 feed_url=feed_url,
+                timestamp_known=timestamp_known,
             )
         )
 
-    posts.sort(key=lambda p: p.published)
+    dated = [p for p in posts if p.timestamp_known]
+    undated = [p for p in posts if not p.timestamp_known]
     if limit is not None and limit > 0:
-        posts = posts[-limit:]
+        dated = dated[-limit:]
+        undated = undated[: max(0, limit - len(dated))]
+    posts = dated + undated
+    posts.sort(key=lambda p: p.published)
     return posts

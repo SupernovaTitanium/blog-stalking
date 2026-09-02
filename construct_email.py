@@ -2,17 +2,46 @@ from __future__ import annotations
 
 from datetime import datetime
 import hashlib
-import re
 from email.header import Header
 from email.mime.text import MIMEText
 from email.utils import formataddr, parseaddr
 from html import escape
 from typing import Sequence
 
+import nh3
 import smtplib
 from loguru import logger
 
 from feeds import FeedPost
+
+# Feed content is untrusted third-party HTML embedded straight into the
+# digest; only these tags/attributes survive sanitization.
+_ALLOWED_TAGS = {
+    "a", "abbr", "b", "blockquote", "br", "code", "div", "em", "figcaption",
+    "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "li",
+    "ol", "p", "pre", "q", "s", "small", "span", "strike", "strong", "sub",
+    "sup", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul",
+}
+_ALLOWED_ATTRIBUTES = {
+    "a": {"href", "title"},
+    "abbr": {"title"},
+    "img": {"src", "alt", "title", "width", "height"},
+    "td": {"colspan", "rowspan"},
+    "th": {"colspan", "rowspan"},
+}
+
+
+def sanitize_post_html(html: str | None) -> str:
+    if not html:
+        return ""
+    return nh3.clean(
+        html,
+        tags=_ALLOWED_TAGS,
+        attributes=_ALLOWED_ATTRIBUTES,
+        url_schemes={"http", "https", "mailto"},
+        link_rel="noopener noreferrer",
+    )
+
 
 _INLINE_MATH_STYLE = (
     "font-family:'Cambria Math','STIX Two Math','Times New Roman',serif;"
@@ -86,10 +115,18 @@ FRAMEWORK = """\
 <head>
   <meta charset="utf-8">
   <style>
-    body {{ font-family: Arial, sans-serif; }}
-    table.post {{ width: 100%; border: 1px solid #ddd; border-left: 6px solid #444; border-radius: 6px; padding: 16px; background: #f9f9f9; }}
+    body {{ font-family: Arial, sans-serif; margin: 0; color: #111; }}
+    .digest-wrap {{ max-width: 860px; margin: 0 auto; }}
+    .post {{ box-sizing: border-box; width: 100%; max-width: 100%; border: 1px solid #ddd; border-left: 6px solid #444; border-radius: 6px; padding: 16px; background: #f9f9f9; margin-bottom: 24px; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word; }}
+    .post * {{ box-sizing: border-box; max-width: 100%; }}
+    .post img, .summary-section img {{ max-width: 100% !important; height: auto !important; display: block; }}
+    .post table {{ width: 100% !important; max-width: 100% !important; table-layout: fixed; border-collapse: collapse; }}
+    .post td, .post th {{ overflow-wrap: anywhere; word-break: break-word; }}
+    .post p, .post div, .post li, .post blockquote, .post pre, .post code {{ overflow-wrap: anywhere; word-break: break-word; }}
+    .post pre {{ white-space: pre-wrap; }}
     .meta {{ color: #666; font-size: 14px; margin-bottom: 12px; }}
     .translation {{ margin-top: 12px; padding: 12px; background: #fff6e6; border-radius: 6px; }}
+    .post-content, .translation {{ max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }}
     .source-header {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }}
     .source-badge {{ color: #fff; font-size: 13px; padding: 4px 10px; border-radius: 999px; font-weight: bold; }}
     .source-extra {{ color: #444; font-size: 13px; }}
@@ -106,10 +143,16 @@ FRAMEWORK = """\
     .summary-text {{ font-size: 14px; color: #555; margin-bottom: 6px; }}
     .summary-link {{ font-size: 13px; color: #0066cc; text-decoration: none; }}
     .summary-link:hover {{ text-decoration: underline; }}
+    @media print {{
+      .digest-wrap {{ max-width: 100%; }}
+      .post img, .summary-section img {{ max-height: 48vh; object-fit: contain; }}
+      .summary-item, .source-header, .meta, figure, blockquote, pre {{ break-inside: avoid; page-break-inside: avoid; }}
+      .post {{ break-inside: auto; page-break-inside: auto; }}
+    }}
   </style>
 </head>
 <body>
-<div style="max-width:900px; margin:0 auto;">
+<div class="digest-wrap" style="max-width:860px; margin:0 auto;">
 {content}
 </div>
 <br><br>
@@ -131,43 +174,33 @@ EMPTY_BLOCK = """\
 
 POST_TEMPLATE = """\
 <a id="{anchor}" name="{anchor}" style="display:block;height:1px;line-height:1px;"></a>
-<table class="post" id="{anchor}-section" style="width:100%; border:1px solid #ddd; border-left:6px solid {accent}; border-radius:6px; padding:16px; background:#f9f9f9; margin-bottom:24px; line-height:1.6;">
-  <tr>
-    <td style="font-size:20px; font-weight:bold; line-height:1.4;">
-      <a href="{url}" target="_blank" style="color:#333; text-decoration:none;">{title}</a>
-      <span style="font-size:13px; margin-left:10px;">
-        <a href="#overview" style="color:#0066cc; text-decoration:none;">回到摘要</a>
-      </span>
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <div class="source-header">
-        {source_badge}
-        <div class="source-extra">
-          {source_extra}
-        </div>
+<div class="post" id="{anchor}-section" style="box-sizing:border-box; width:100%; max-width:100%; border:1px solid #ddd; border-left:6px solid {accent}; border-radius:6px; padding:16px; background:#f9f9f9; margin-bottom:24px; line-height:1.6; overflow-wrap:anywhere; word-break:break-word;">
+  <div style="font-size:20px; font-weight:bold; line-height:1.4; overflow-wrap:anywhere; word-break:break-word;">
+    <a href="{url}" target="_blank" style="color:#333; text-decoration:none;">{title}</a>
+    <span style="font-size:13px; margin-left:10px;">
+      <a href="#overview" style="color:#0066cc; text-decoration:none;">回到摘要</a>
+    </span>
+  </div>
+  <div>
+    <div class="source-header">
+      {source_badge}
+      <div class="source-extra">
+        {source_extra}
       </div>
-      {source_tags}
-    </td>
-  </tr>
-  <tr>
-    <td class="meta">
-      Published: {published} &middot; Source: {source}
-    </td>
-  </tr>
-  <tr>
-    <td style="line-height:1.6; padding-top:6px;">
-      {original_html}
-    </td>
-  </tr>
-  <tr>
-    <td class="translation" style="line-height:1.6;">
-      <strong>Translation ({target_language}):</strong><br/>
-      {translation_html}
-    </td>
-  </tr>
-</table>
+    </div>
+    {source_tags}
+  </div>
+  <div class="meta">
+    Published: {published} &middot; Source: {source}
+  </div>
+  <div class="post-content" style="line-height:1.6; padding-top:6px; max-width:100%; overflow-wrap:anywhere; word-break:break-word;">
+    {original_html}
+  </div>
+  <div class="translation" style="line-height:1.6; max-width:100%; overflow-wrap:anywhere; word-break:break-word;">
+    <strong>Translation ({target_language}):</strong><br/>
+    {translation_html}
+  </div>
+</div>
 """
 
 SUMMARY_SECTION_TEMPLATE = """\
@@ -441,36 +474,21 @@ def _render_summary_text(post: FeedPost) -> str:
     return _render_text_with_math(summary)
 
 
-def _is_tao_related(post: FeedPost) -> bool:
-    candidates = (
-        post.source_owner,
-        post.source_name,
-        post.source,
-        post.feed_url,
-        post.source_site,
-        post.url,
-    )
-    pattern = re.compile(r"(terence\s+tao|terrytao|@tao|/tao|\btao\b)", re.IGNORECASE)
-    for value in candidates:
-        if not value:
-            continue
-        if pattern.search(value):
-            return True
-    return False
+def _is_pinned_first_sort_key(post: FeedPost) -> bool:
+    return not post.pinned
 
 
 def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
     if not posts:
         return FRAMEWORK.format(content=EMPTY_BLOCK)
 
-    tao_posts = [post for post in posts if _is_tao_related(post)]
-    if tao_posts:
-        other_posts = [post for post in posts if not _is_tao_related(post)]
-        posts = list(tao_posts) + list(other_posts)
+    # Stable sort: pinned posts move to the front, everything else keeps
+    # the (time-ordered) input order.
+    ordered = sorted(posts, key=_is_pinned_first_sort_key)
 
     summary_items: list[str] = []
     blocks = []
-    for post in posts:
+    for post in ordered:
         accent = _resolve_accent(post)
         badge = _render_source_badge(post, accent)
         source_extra = _render_source_extra(post)
@@ -491,9 +509,9 @@ def render_email(posts: Sequence[FeedPost], target_language: str) -> str:
         blocks.append(
             POST_TEMPLATE.format(
                 title=escape(post.title or "Untitled"),
-                url=post.url,
+                url=escape(post.url or "#", quote=True),
                 published=_format_datetime(post.published),
-                original_html=post.content_html,
+                original_html=sanitize_post_html(post.content_html),
                 source=escape(post.source or "Unknown"),
                 target_language=escape(target_language),
                 translation_html=_render_translation(post.translation),
@@ -534,6 +552,11 @@ def send_email(
         logger.debug(f"Falling back to SMTPS: {exc}")
         server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=30)
 
-    server.login(sender, password)
-    server.sendmail(sender, [receiver], msg.as_string())
-    server.quit()
+    try:
+        server.login(sender, password)
+        server.sendmail(sender, [receiver], msg.as_string())
+    finally:
+        try:
+            server.quit()
+        except Exception:
+            pass
