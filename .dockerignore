@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.codex-remote-attachments
+artifacts
+assets
+tests
+state
+.env
+Dockerfile
+docker-compose.yml

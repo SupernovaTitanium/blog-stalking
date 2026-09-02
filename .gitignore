@@ -5,13 +5,18 @@ build/
 dist/
 wheels/
 .vscode/
-*.egg-info
+*.egg-info/
 .env
 
 # Virtual environments
 .venv
 test.ipynb
 
+# Local run output
+artifacts/
 logs
 models
 test-compose.yml
+
+# Tooling debris
+.codex-remote-attachments/
