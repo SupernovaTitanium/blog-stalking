@@ -2,14 +2,16 @@
   {
     "name": "Whats New - Terence Tao",
     "site": "https://terrytao.wordpress.com",
-    "feed": "https://terrytao.wordpress.com/feed/"
+    "feed": "https://terrytao.wordpress.com/feed/",
+    "pinned": true
   },
   {
     "name": "Terence Tao (Mastodon)",
     "site": "https://mathstodon.xyz/@tao",
     "feed": "https://mathstodon.xyz/@tao.rss",
     "owner": "Terence Tao",
-    "category": "Mastodon feed"
+    "category": "Mastodon feed",
+    "pinned": true
   },
   {
     "name": "Gowerss Weblog",
@@ -43,16 +45,11 @@
     "owner": "Scott Aaronson",
     "category": "Individual researcher",
     "description": "Quantum computing and complexity theory essays from Scott Aaronson.",
-    "tags": ["quantum", "complexity", "theory"]
-  },
-  {
-    "name": "Off the Convex Path",
-    "site": "https://offconvex.org",
-    "feed": "https://www.offconvex.org/feed.xml",
-    "owner": "Moritz Hardt & collaborators",
-    "category": "Research collective",
-    "description": "Long-form notes on optimization and theoretical machine learning.",
-    "tags": ["optimization", "theory", "ml"]
+    "tags": [
+      "quantum",
+      "complexity",
+      "theory"
+    ]
   },
   {
     "name": "Parameter-free Learning and Optimization",
@@ -66,17 +63,16 @@
     "owner": "Berkeley Artificial Intelligence Research Lab",
     "category": "Academic lab",
     "description": "Research highlights and perspectives from UC Berkeley's BAIR lab.",
-    "tags": ["ai", "research", "berkeley"]
+    "tags": [
+      "ai",
+      "research",
+      "berkeley"
+    ]
   },
   {
     "name": "John D Cook Blog",
     "site": "https://www.johndcook.com/blog",
     "feed": "https://www.johndcook.com/blog/feed/"
-  },
-  {
-    "name": "Steveys Blog Rants",
-    "site": "https://steve-yegge.blogspot.com",
-    "feed": "https://steve-yegge.blogspot.com/feeds/posts/default"
   },
   {
     "name": "Brendan Greggs Blog",
@@ -87,15 +83,6 @@
     "name": "Schneier on Security",
     "site": "https://www.schneier.com",
     "feed": "https://www.schneier.com/feed/"
-  },
-  {
-    "name": "Ken Shirriff",
-    "site": "https://www.righto.com",
-    "feed": "http://www.righto.com/feeds/posts/default?alt=rss",
-    "owner": "Ken Shirriff",
-    "category": "Individual engineer",
-    "description": "Deep dives into retrocomputing, hardware reverse engineering, and cryptography.",
-    "tags": ["hardware", "reverse engineering", "history"]
   },
   {
     "name": "Bartosz Milewskis Programming Cafe",
@@ -109,7 +96,11 @@
     "owner": "Paul Graham",
     "category": "Individual essayist",
     "description": "Classic essays on startups, programming, and independent thinking.",
-    "tags": ["startups", "essays", "programming"]
+    "tags": [
+      "startups",
+      "essays",
+      "programming"
+    ]
   },
   {
     "name": "Simon Willison",
@@ -118,7 +109,11 @@
     "owner": "Simon Willison",
     "category": "Individual engineer",
     "description": "Daily links and essays on data journalism, tooling, and open source.",
-    "tags": ["data", "open source", "notes"]
+    "tags": [
+      "data",
+      "open source",
+      "notes"
+    ]
   },
   {
     "name": "Rands in Repose",
@@ -147,7 +142,11 @@
     "owner": "Google DeepMind",
     "category": "Industry research lab",
     "description": "Research announcements and perspectives from Google DeepMind.",
-    "tags": ["ai", "research", "deepmind"]
+    "tags": [
+      "ai",
+      "research",
+      "deepmind"
+    ]
   },
   {
     "name": "ML@CMU",
@@ -166,7 +165,10 @@
     "owner": "Sebastian Pokutta",
     "category": "Individual researcher",
     "description": "Optimization theory, game theory, and ML insights from Sebastian Pokutta.",
-    "tags": ["optimization", "game theory"]
+    "tags": [
+      "optimization",
+      "game theory"
+    ]
   },
   {
     "name": "OpenAI Blog",
@@ -175,7 +177,11 @@
     "owner": "OpenAI",
     "category": "Industry research lab",
     "description": "Product announcements, research updates, and safety notes from OpenAI.",
-    "tags": ["ai", "openai", "research"]
+    "tags": [
+      "ai",
+      "openai",
+      "research"
+    ]
   },
   {
     "name": "Sebastian Raschka",
@@ -184,7 +190,10 @@
     "owner": "Sebastian Raschka",
     "category": "Individual researcher",
     "description": "Deep learning and MLOps tutorials by Sebastian Raschka.",
-    "tags": ["deep learning", "tutorials"]
+    "tags": [
+      "deep learning",
+      "tutorials"
+    ]
   },
   {
     "name": "Theory of Computing Report",
@@ -193,12 +202,11 @@
     "owner": "Theory of Computing Report editors",
     "category": "Community newsletter",
     "description": "Job postings and event updates for the TCS community.",
-    "tags": ["tcs", "jobs", "community"]
-  },
-  {
-    "name": "Adam Kosiorek",
-    "site": "https://akosiorek.github.io",
-    "feed": "https://akosiorek.github.io/feed.xml"
+    "tags": [
+      "tcs",
+      "jobs",
+      "community"
+    ]
   },
   {
     "name": "Adversarial Intelligence",
@@ -207,7 +215,10 @@
     "owner": "Wouter Koolen",
     "category": "Individual researcher",
     "description": "Online learning and information-theoretic notes by Wouter Koolen.",
-    "tags": ["online learning", "theory"]
+    "tags": [
+      "online learning",
+      "theory"
+    ]
   },
   {
     "name": "Agustinus Kristiadi",
@@ -226,17 +237,16 @@
     "owner": "Amazon Science",
     "category": "Industry research lab",
     "description": "Applied science stories and publications from Amazon researchers.",
-    "tags": ["industry", "research", "amazon"]
+    "tags": [
+      "industry",
+      "research",
+      "amazon"
+    ]
   },
   {
     "name": "Andrej Karpathy Blog",
     "site": "https://karpathy.github.io",
     "feed": "https://karpathy.github.io/feed.xml"
-  },
-  {
-    "name": "AutoML",
-    "site": "https://www.automl.org",
-    "feed": "https://www.automl.org/feed/"
   },
   {
     "name": "Bounded Rationality",
@@ -245,17 +255,15 @@
     "owner": "Brian Keng",
     "category": "Individual researcher",
     "description": "Machine learning and information theory notes from Brian Keng.",
-    "tags": ["ml", "information theory"]
+    "tags": [
+      "ml",
+      "information theory"
+    ]
   },
   {
     "name": "Chris McCormick",
     "site": "https://mccormickml.com",
     "feed": "https://mccormickml.com/atom.xml"
-  },
-  {
-    "name": "colahs blog",
-    "site": "https://colah.github.io",
-    "feed": "https://colah.github.io/rss.xml"
   },
   {
     "name": "Differential Privacy",
@@ -264,12 +272,10 @@
     "owner": "Differential Privacy Community",
     "category": "Community blog",
     "description": "Announcements and explainers from the differential privacy community.",
-    "tags": ["privacy", "community"]
-  },
-  {
-    "name": "Distill",
-    "site": "https://distill.pub",
-    "feed": "https://distill.pub/rss.xml"
+    "tags": [
+      "privacy",
+      "community"
+    ]
   },
   {
     "name": "Ethan N Epperly",
@@ -278,7 +284,10 @@
     "owner": "Ethan N. Epperly",
     "category": "Individual researcher",
     "description": "Causal inference and econometrics musings by Ethan Epperly.",
-    "tags": ["econometrics", "causal inference"]
+    "tags": [
+      "econometrics",
+      "causal inference"
+    ]
   },
   {
     "name": "int8.io",
@@ -287,21 +296,23 @@
     "owner": "Tim Dettmers",
     "category": "Individual researcher",
     "description": "GPU and quantization deep dives for practical deep learning.",
-    "tags": ["quantization", "hardware", "deep learning"]
+    "tags": [
+      "quantization",
+      "hardware",
+      "deep learning"
+    ]
   },
   {
-    "name": "Justin Domke",
-    "site": "https://justindomke.wordpress.com",
-    "feed": "https://justindomke.wordpress.com/feed/",
-    "owner": "Justin Domke",
+    "name": "Lilian Weng",
+    "site": "https://lilianweng.github.io",
+    "feed": "https://lilianweng.github.io/index.xml",
+    "owner": "Lilian Weng",
     "category": "Individual researcher",
-    "description": "Probabilistic modeling and optimization posts from Justin Domke.",
-    "tags": ["probability", "optimization"]
-  },
-  {
-    "name": "LilLog",
-    "site": "https://lilianweng.github.io/lil-log",
-    "feed": "https://lilianweng.github.io/lil-log/feed"
+    "tags": [
+      "llm",
+      "agents",
+      "tutorials"
+    ]
   },
   {
     "name": "Machine Learning Theory",
@@ -314,51 +325,22 @@
     "feed": "https://francisbach.com/feed/"
   },
   {
-    "name": "Machine Thoughts",
-    "site": "https://machinethoughts.wordpress.com",
-    "feed": "https://machinethoughts.wordpress.com/feed/",
-    "owner": "David McAllester",
-    "category": "Individual researcher",
-    "description": "Reflections on machine learning theory by David McAllester.",
-    "tags": ["ml theory", "reflections"]
-  },
-  {
-    "name": "Normal Deviate",
-    "site": "https://normaldeviate.wordpress.com",
-    "feed": "https://normaldeviate.wordpress.com/feed/"
-  },
-  {
-    "name": "Seitas Place",
-    "site": "https://danieltakeshi.github.io",
-    "feed": "https://danieltakeshi.github.io/feed.xml",
-    "owner": "Daniel Seita",
-    "category": "Individual researcher",
-    "description": "Robotics and ML research notes from Daniel Seita.",
-    "tags": ["robotics", "ml"]
-  },
-  {
     "name": "Sorta Insightful",
     "site": "https://www.alexirpan.com",
     "feed": "https://www.alexirpan.com/feed.xml",
     "owner": "Alex Irpan",
     "category": "Individual researcher",
     "description": "Candid essays on ML research, career arcs, and alignment from Alex Irpan.",
-    "tags": ["ml", "alignment", "essays"]
-  },
-  {
-    "name": "M Stories",
-    "site": "https://michael-bronstein.medium.com",
-    "feed": "https://michael-bronstein.medium.com/feed"
+    "tags": [
+      "ml",
+      "alignment",
+      "essays"
+    ]
   },
   {
     "name": "The Gradient",
     "site": "https://thegradient.pub",
     "feed": "https://thegradient.pub/rss"
-  },
-  {
-    "name": "The Information Structuralist",
-    "site": "https://infostructuralist.wordpress.com",
-    "feed": "https://infostructuralist.wordpress.com/feed/"
   },
   {
     "name": "The Wild Week in AI",
@@ -367,7 +349,11 @@
     "owner": "Denny Britz",
     "category": "Individual newsletter",
     "description": "Weekly curation of notable AI research and news.",
-    "tags": ["newsletter", "ai", "curation"]
+    "tags": [
+      "newsletter",
+      "ai",
+      "curation"
+    ]
   },
   {
     "name": "Tim van Erven",
@@ -376,12 +362,10 @@
     "owner": "Tim van Erven",
     "category": "Individual researcher",
     "description": "PAC-Bayes and ML theory updates from Tim van Erven.",
-    "tags": ["pac-bayes", "ml theory"]
-  },
-  {
-    "name": "UCSD Machine Learning Group",
-    "site": "https://ucsdml.github.io",
-    "feed": "https://ucsdml.github.io/feed.xml"
+    "tags": [
+      "pac-bayes",
+      "ml theory"
+    ]
   },
   {
     "name": "Andrej Karpathy Bear Blog",
@@ -407,5 +391,187 @@
     "name": "Redwood Research",
     "site": "https://blog.redwoodresearch.org",
     "feed": "https://blog.redwoodresearch.org/feed"
+  },
+  {
+    "name": "Gil Kalai",
+    "site": "https://gilkalai.wordpress.com",
+    "feed": "https://gilkalai.wordpress.com/feed/",
+    "owner": "Gil Kalai",
+    "category": "Individual researcher",
+    "description": "Combinatorics, quantum computing skepticism, and math polymath projects.",
+    "tags": [
+      "math",
+      "quantum",
+      "combinatorics"
+    ]
+  },
+  {
+    "name": "Not Even Wrong",
+    "site": "https://www.math.columbia.edu/~woit/wordpress/",
+    "feed": "https://www.math.columbia.edu/~woit/wordpress/?feed=rss2",
+    "owner": "Peter Woit",
+    "category": "Individual researcher",
+    "description": "Math and theoretical physics commentary from Columbia.",
+    "tags": [
+      "math",
+      "physics"
+    ]
+  },
+  {
+    "name": "Quomodocumque",
+    "site": "https://quomodocumque.wordpress.com",
+    "feed": "https://quomodocumque.wordpress.com/feed/",
+    "owner": "Jordan Ellenberg",
+    "category": "Individual researcher",
+    "description": "Number theory and general mathematics essays.",
+    "tags": [
+      "math",
+      "number theory"
+    ]
+  },
+  {
+    "name": "Azimuth",
+    "site": "https://johncarlosbaez.wordpress.com",
+    "feed": "https://johncarlosbaez.wordpress.com/feed/",
+    "owner": "John Baez",
+    "category": "Individual researcher",
+    "description": "Mathematics, network theory, and applied category theory.",
+    "tags": [
+      "math",
+      "category theory"
+    ]
+  },
+  {
+    "name": "The n-Category Cafe",
+    "site": "https://golem.ph.utexas.edu/category/",
+    "feed": "https://golem.ph.utexas.edu/category/atom10.xml",
+    "category": "Research collective",
+    "description": "Group blog on category theory and mathematical physics.",
+    "tags": [
+      "math",
+      "category theory"
+    ]
+  },
+  {
+    "name": "Vitalik Buterin",
+    "site": "https://vitalik.eth.limo",
+    "feed": "https://vitalik.eth.limo/feed.xml",
+    "owner": "Vitalik Buterin",
+    "category": "Individual researcher",
+    "description": "Long-form essays on math, cryptography, and mechanism design.",
+    "tags": [
+      "math",
+      "crypto",
+      "economics"
+    ]
+  },
+  {
+    "name": "Interconnects",
+    "site": "https://www.interconnects.ai",
+    "feed": "https://www.interconnects.ai/feed",
+    "owner": "Nathan Lambert",
+    "category": "Individual newsletter",
+    "description": "LLM research analysis, RLHF, and AI industry strategy.",
+    "tags": [
+      "llm",
+      "rlhf",
+      "newsletter"
+    ]
+  },
+  {
+    "name": "Statistical Modeling",
+    "site": "https://statmodeling.stat.columbia.edu",
+    "feed": "https://statmodeling.stat.columbia.edu/feed/",
+    "owner": "Andrew Gelman",
+    "category": "Individual researcher",
+    "description": "Statistics, causal inference, and social science from Columbia.",
+    "tags": [
+      "statistics",
+      "causal inference"
+    ]
+  },
+  {
+    "name": "Hugging Face Blog",
+    "site": "https://huggingface.co/blog",
+    "feed": "https://huggingface.co/blog/feed.xml",
+    "category": "Industry research lab",
+    "description": "Open-source ML research and engineering from Hugging Face.",
+    "tags": [
+      "ai",
+      "open source"
+    ]
+  },
+  {
+    "name": "Google Research Blog",
+    "site": "https://research.google/blog/",
+    "feed": "https://research.google/blog/rss/",
+    "category": "Industry research lab",
+    "description": "Research highlights from Google.",
+    "tags": [
+      "ai",
+      "research"
+    ]
+  },
+  {
+    "name": "Eugene Yan",
+    "site": "https://eugeneyan.com",
+    "feed": "https://eugeneyan.com/rss/",
+    "owner": "Eugene Yan",
+    "category": "Individual researcher",
+    "description": "ML in production, LLM systems, and applied data science.",
+    "tags": [
+      "ml systems",
+      "llm",
+      "practice"
+    ]
+  },
+  {
+    "name": "Julia Evans",
+    "site": "https://jvns.ca",
+    "feed": "https://jvns.ca/atom.xml",
+    "owner": "Julia Evans",
+    "category": "Individual engineer",
+    "description": "Systems programming, debugging, and zines.",
+    "tags": [
+      "systems",
+      "debugging"
+    ]
+  },
+  {
+    "name": "The Old New Thing",
+    "site": "https://devblogs.microsoft.com/oldnewthing/",
+    "feed": "https://devblogs.microsoft.com/oldnewthing/feed/",
+    "owner": "Raymond Chen",
+    "category": "Individual engineer",
+    "description": "Windows internals, history, and API design from Microsoft.",
+    "tags": [
+      "windows",
+      "systems",
+      "history"
+    ]
+  },
+  {
+    "name": "Drew DeVault",
+    "site": "https://drewdevault.com",
+    "feed": "https://drewdevault.com/blog/index.xml",
+    "owner": "Drew DeVault",
+    "category": "Individual engineer",
+    "description": "Systems programming, open source, and Rust/C.",
+    "tags": [
+      "systems",
+      "open source",
+      "rust"
+    ]
+  },
+  {
+    "name": "Krebs on Security",
+    "site": "https://krebsonsecurity.com",
+    "feed": "https://krebsonsecurity.com/feed/",
+    "owner": "Brian Krebs",
+    "category": "Individual journalist",
+    "description": "In-depth security news and investigations.",
+    "tags": [
+      "security"
+    ]
   }
 ]
