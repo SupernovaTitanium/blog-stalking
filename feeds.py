@@ -7,7 +7,7 @@ import time
 import urllib.error
 import urllib.request
 import zlib
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
@@ -79,9 +79,28 @@ _MAX_ARTICLE_FETCHES_PER_FEED = 6
 # Class/id fragments that mark boilerplate inside a fetched article page.
 _PAGE_JUNK_PATTERN = re.compile(
     r"comment|sidebar|widget|nav|footer|related|share|social|subscribe|"
-    r"newsletter|respond|breadcrumb|pagination|promo|advert|byline",
+    r"newsletter|respond|breadcrumb|pagination|promo|advert|byline|"
+    r"entry-tags|post-tags|taglist|entry-meta|post-meta|asset-meta|"
+    r"postmetadata|entry-footer|post-footer",
     re.IGNORECASE,
 )
+
+# Plain-text boilerplate prefixes (WordPress/Movable-Type footers that ship
+# inside the content area with no distinguishing class).
+_BOILER_PREFIXES = (
+    "tags:", "tagged with:", "posted on", "posted in", "subscribe to",
+    "leave a comment", "cancel reply", "blog moderation policy",
+    "related posts", "related articles", "powered by", "share this",
+    "skip to content", "sidebar photo", "comment on this entry",
+    "this entry was posted", "categories:", "filed under",
+)
+_BOILER_EXACT = {"related posts", "related articles", "see also"}
+_LEADING_NAV_WORDS = {"home", "blog", "menu", "search", "skip to content"}
+# A single short tag-like token, optionally comma-prefixed (tag clouds).
+_BARE_TAG_LINE = re.compile(r"[,;]?\s*[A-Za-z0-9_.#/\-]{1,30}")
+
+# Pathological article pages can reach tens of MB; never read more than this.
+_MAX_ARTICLE_BYTES = 3_000_000
 
 
 def _strip_page_junk(container) -> None:
@@ -127,18 +146,88 @@ def _normalize_text_blocks(raw: str) -> str:
     return "\n".join(out).strip()
 
 
-def _fetch_article_content(url: str, current_text: str = "") -> tuple[str, str] | None:
+def _trim_boilerplate_lines(text: str) -> str:
+    """Drop nav-ish leading lines and WordPress/Metafilter-style footers.
+
+    Only lines that *start with* a boilerplate prefix count, so real
+    sentences merely containing "posted on the forum" survive. A standalone
+    "Related posts" heading truncates everything after it.
+    """
+    lines = [line.rstrip() for line in text.split("\n")]
+
+    cut = None
+    for idx, line in enumerate(lines):
+        low = line.strip().lower().lstrip("←→·|—- ")
+        if low in _BOILER_EXACT:
+            cut = idx
+            break
+    if cut is not None:
+        lines = lines[:cut]
+
+    def is_boiler(line: str) -> bool:
+        low = line.strip().lower().lstrip("←→·|—- ")
+        if not low:
+            return True
+        if low.startswith("http://") or low.startswith("https://"):
+            return len(low) < 120
+        if len(line) < 200 and any(
+            low.startswith(prefix) for prefix in _BOILER_PREFIXES
+        ):
+            return True
+        # Trailing bare tag tokens ("reddit", ", seo", ", openai") that tag
+        # clouds emit as separate lines.
+        return bool(_BARE_TAG_LINE.fullmatch(line.strip()))
+
+    start = 0
+    while start < len(lines) and (
+        not lines[start].strip()
+        or (
+            lines[start].strip().lower() in _LEADING_NAV_WORDS
+            and len(lines[start].strip()) < 30
+        )
+    ):
+        start += 1
+    end = len(lines)
+    while end > start and is_boiler(lines[end - 1]):
+        end -= 1
+    trimmed = "\n".join(lines[start:end]).strip()
+    if not trimmed:
+        # Everything looked like boilerplate (a lone tag-like word, say) —
+        # keep the original rather than shipping an empty body.
+        return text.strip()
+    return trimmed
+
+
+def _fetch_article_page(url: str) -> bytes | None:
+    try:
+        return _fetch_feed_bytes(url, attempts=2, max_bytes=_MAX_ARTICLE_BYTES)
+    except Exception:
+        return None
+
+
+def _fetch_article_content(
+    url: str, current_text: str = "", feed_url: str | None = None
+) -> tuple[str, str] | None:
     """Fetch an article page and extract (html, text) of its main content.
 
     Precise containers (article / .entry-content) win even when short — a
     link-post's body legitimately is one sentence — while broad containers
-    (main / body) must clear a higher bar. Everything gets boilerplate
-    stripped, and the result only replaces the feed text when it adds real
-    substance; otherwise callers keep what the feed itself provided.
+    (main / body / whole page) must clear a higher bar. Everything gets
+    boilerplate stripped, and the result only replaces the feed text when it
+    adds real substance; otherwise callers keep what the feed itself
+    provided. When the entry links to a dead/moved domain, the same path is
+    retried on the feed's own host (e.g. vitalik.ca -> vitalik.eth.limo).
     """
-    try:
-        payload = _fetch_feed_bytes(url)
-    except Exception:
+    payload = _fetch_article_page(url)
+    if payload is None and feed_url:
+        feed_host = urlparse(feed_url).netloc
+        link_host = urlparse(url).netloc
+        if feed_host and link_host and feed_host != link_host:
+            swapped = urlunparse(
+                urlparse(url)._replace(scheme="https", netloc=feed_host)
+            )
+            payload = _fetch_article_page(swapped)
+    if payload is None:
         return None
     soup = BeautifulSoup(payload.decode("utf-8", errors="replace"), "html.parser")
     _strip_page_junk(soup)
@@ -150,12 +239,15 @@ def _fetch_article_content(url: str, current_text: str = "") -> tuple[str, str] 
         ("article", 60),
         ("main", 200),
         ("body", 300),
+        (None, 400),  # whole page: last resort for container-less markup
     )
     for selector, floor in candidates:
-        node = soup.select_one(selector)
+        node = soup.select_one(selector) if selector else soup
         if node is None:
             continue
-        text = _normalize_text_blocks(node.get_text("\n"))
+        text = _trim_boilerplate_lines(
+            _normalize_text_blocks(node.get_text("\n"))
+        )
         if len(text) < floor:
             continue
         if current_text and len(text) < len(current_text) + 120:
@@ -192,10 +284,10 @@ def _extract_entry_datetime(entry: Mapping[str, Any]) -> datetime | None:
     return None
 
 
-def _fetch_feed_bytes_once(url: str) -> bytes:
+def _fetch_feed_bytes_once(url: str, max_bytes: int | None = None) -> bytes:
     request = urllib.request.Request(url, headers=_FEED_HEADERS)
     with urllib.request.urlopen(request, timeout=20) as response:
-        data = response.read()
+        data = response.read(max_bytes) if max_bytes else response.read()
         encoding = (response.headers.get("Content-Encoding") or "").lower()
     if encoding in ("gzip", "x-gzip"):
         data = gzip.decompress(data)
@@ -207,14 +299,16 @@ def _fetch_feed_bytes_once(url: str) -> bytes:
     return data
 
 
-def _fetch_feed_bytes(url: str, attempts: int = 3) -> bytes:
+def _fetch_feed_bytes(
+    url: str, attempts: int = 3, max_bytes: int | None = None
+) -> bytes:
     # Transient low-level failures (DNS races under concurrency, connection
     # resets) deserve a retry; HTTP error statuses are server responses and
     # are re-raised untouched.
     last_exc: Exception | None = None
     for attempt in range(max(1, attempts)):
         try:
-            return _fetch_feed_bytes_once(url)
+            return _fetch_feed_bytes_once(url, max_bytes)
         except urllib.error.HTTPError:
             raise
         except Exception as exc:
@@ -507,14 +601,14 @@ def fetch_recent_posts(
 
         raw_html = _extract_entry_html(entry)
         soup = BeautifulSoup(raw_html or "", "html.parser")
-        text = _normalize_text_blocks(soup.get_text("\n"))
+        text = _trim_boilerplate_lines(_normalize_text_blocks(soup.get_text("\n")))
         if (
             len(text) < _MIN_CONTENT_CHARS
             and link.startswith("http")
             and article_fetches < _MAX_ARTICLE_FETCHES_PER_FEED
         ):
             article_fetches += 1
-            article = _fetch_article_content(link, current_text=text)
+            article = _fetch_article_content(link, current_text=text, feed_url=feed_url)
             if article is not None:
                 raw_html, text = article
         title = (getattr(entry, "title", "") or text or "New post").strip()

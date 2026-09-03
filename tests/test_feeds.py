@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from feeds import (
     _extract_entry_datetime,
+    _trim_boilerplate_lines,
     _extract_entry_html,
     _parse_feed,
     _sanitize_feed_payload,
@@ -79,7 +80,7 @@ class ArticleContentFallbackTest(unittest.TestCase):
     def test_short_feed_text_is_enriched_from_article_page(self) -> None:
         calls: list[str] = []
 
-        def fake_fetch(url):
+        def fake_fetch(url, *args, **kwargs):
             calls.append(url)
             return self.FEED_XML if len(calls) == 1 else self.ARTICLE_HTML
 
@@ -98,7 +99,7 @@ class ArticleContentFallbackTest(unittest.TestCase):
     def test_article_fetch_failure_keeps_feed_text(self) -> None:
         calls: list[str] = []
 
-        def fake_fetch(url):
+        def fake_fetch(url, *args, **kwargs):
             calls.append(url)
             if len(calls) == 1:
                 return self.FEED_XML
@@ -123,7 +124,7 @@ class ArticleContentFallbackTest(unittest.TestCase):
             "</item></channel></rss>"
         ).encode("utf-8")
 
-        def fail_second_fetch(url):
+        def fail_second_fetch(url, *args, **kwargs):
             if fail_second_fetch.calls:
                 raise AssertionError("article fetch should not happen")
             fail_second_fetch.calls.append(url)
@@ -165,7 +166,7 @@ class ArticleContentFallbackTest(unittest.TestCase):
 
         calls: list[str] = []
 
-        def fake_fetch(url):
+        def fake_fetch(url, *args, **kwargs):
             calls.append(url)
             return feed_xml if len(calls) == 1 else page_html
 
@@ -201,7 +202,7 @@ class ArticleContentFallbackTest(unittest.TestCase):
 
         calls: list[str] = []
 
-        def fake_fetch(url):
+        def fake_fetch(url, *args, **kwargs):
             calls.append(url)
             return feed_xml if len(calls) == 1 else page_html
 
@@ -237,6 +238,104 @@ class ArticleContentFallbackTest(unittest.TestCase):
 
         self.assertIn("Comcast has added motion detection.", posts[0].content_text)
         self.assertIn("Second paragraph here.", posts[0].content_text)
+
+
+class BoilerplateTrimTest(unittest.TestCase):
+    def test_trailing_wordpress_footer_is_removed(self) -> None:
+        text = (
+            "Real article content sentence.\n\n"
+            "Tags: security, scam\n"
+            "Posted on August 31, 2026 at 7:03 AM\n"
+            "Blog moderation policy.\n"
+        )
+        trimmed = _trim_boilerplate_lines(text)
+        self.assertIn("Real article content sentence.", trimmed)
+        self.assertNotIn("Tags:", trimmed)
+        self.assertNotIn("Posted on", trimmed)
+        self.assertNotIn("moderation", trimmed)
+
+    def test_related_posts_heading_truncates_rest(self) -> None:
+        text = "Intro paragraph.\n\nRelated posts\nSome other article\nAnother article"
+        trimmed = _trim_boilerplate_lines(text)
+        self.assertIn("Intro paragraph.", trimmed)
+        self.assertNotIn("Some other article", trimmed)
+
+    def test_sentences_containing_posted_on_survive(self) -> None:
+        text = (
+            "At one point Intel 471 finds Express posted on Breachforums "
+            "for months in 2025 using fake stores."
+        )
+        trimmed = _trim_boilerplate_lines(text)
+        self.assertIn("posted on Breachforums", trimmed)
+
+    def test_leading_nav_words_removed(self) -> None:
+        text = "Home\nBlog\n\nFirst real paragraph here."
+        trimmed = _trim_boilerplate_lines(text)
+        self.assertTrue(trimmed.startswith("First real paragraph"))
+
+
+class ArticleHostSwapTest(unittest.TestCase):
+    FEED_XML = (
+        '<rss version="2.0"><channel><title>V</title>'
+        "<item><title>Obfuscation III</title>"
+        "<link>https://dead.example/general/2026/08/21/post.html</link>"
+        "<pubDate>Wed, 02 Sep 2026 06:00:00 +0000</pubDate>"
+        "<description></description></item>"
+        "</channel></rss>"
+    ).encode("utf-8")
+    PAGE_HTML = (
+        "<html><body><p>" + "Recovered article body. " * 40 + "</p></body></html>"
+    ).encode("utf-8")
+
+    def test_dead_entry_domain_retried_on_feed_host(self) -> None:
+        calls: list[str] = []
+
+        def fake_fetch(url, *args, **kwargs):
+            calls.append(url)
+            if "dead.example" in url:
+                raise RuntimeError("DNS fail")
+            if len(calls) == 1:
+                return self.FEED_XML
+            return self.PAGE_HTML
+
+        with patch("feeds._fetch_feed_bytes", side_effect=fake_fetch):
+            posts = fetch_recent_posts(
+                "https://live.example/feed.xml",
+                window_hours=24,
+                cutoff=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            )
+
+        self.assertIn("Recovered article body.", posts[0].content_text)
+        self.assertTrue(any("live.example/general/2026/08/21/post.html" in c for c in calls))
+
+
+class WholePageExtractionTest(unittest.TestCase):
+    def test_containerless_page_falls_back_to_whole_soup(self) -> None:
+        feed_xml = (
+            '<rss version="2.0"><channel><title>T</title>'
+            "<item><title>Containerless</title>"
+            "<link>https://example.com/post</link>"
+            "<pubDate>Wed, 02 Sep 2026 06:00:00 +0000</pubDate>"
+            "<description>Excerpt</description></item>"
+            "</channel></rss>"
+        ).encode("utf-8")
+        page_html = (
+            "<html><div><p>" + "Bare page body content. " * 60 + "</p></div></html>"
+        ).encode("utf-8")
+        calls: list[str] = []
+
+        def fake_fetch(url, *args, **kwargs):
+            calls.append(url)
+            return feed_xml if len(calls) == 1 else page_html
+
+        with patch("feeds._fetch_feed_bytes", side_effect=fake_fetch):
+            posts = fetch_recent_posts(
+                "https://example.com/feed",
+                window_hours=24,
+                cutoff=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            )
+
+        self.assertIn("Bare page body content.", posts[0].content_text)
 
 
 class ExtractEntryHtmlTest(unittest.TestCase):
@@ -329,7 +428,7 @@ class ParseFeedRecoveryTest(unittest.TestCase):
             b"</channel></rss>"
         )
 
-        def fake_fetch(url):
+        def fake_fetch(url, *args, **kwargs):
             if url == "https://example.com/rss.xml":
                 return rss_payload
             return html_payload
