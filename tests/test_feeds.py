@@ -139,6 +139,105 @@ class ArticleContentFallbackTest(unittest.TestCase):
 
         self.assertIn("Rich syndicated content.", posts[0].content_text)
 
+    def test_link_post_page_without_extra_content_keeps_feed_text(self) -> None:
+        # Schneier-style: the feed one-liner is clean, and the article page
+        # only adds the title plus boilerplate — the page must NOT replace it.
+        feed_xml = (
+            '<rss version="2.0"><channel><title>T</title>'
+            "<item><title>Researching Employment Scams</title>"
+            "<link>https://example.com/post</link>"
+            "<pubDate>Wed, 02 Sep 2026 06:00:00 +0000</pubDate>"
+            "<description>&lt;p&gt;Researchers built a fake company to study "
+            "fake employee scams. Read the &lt;a href='https://x.example/'&gt;"
+            "full analysis&lt;/a&gt; covering recruitment funnels and payouts "
+            "across three months of operation.&lt;/p&gt;</description>"
+            "</item></channel></rss>"
+        ).encode("utf-8")
+        page_html = (
+            "<html><body><main>"
+            "<article><h1>Researching Employment Scams</h1>"
+            "<p>Researchers built a fake company to study fake employee scams.</p>"
+            "</article>"
+            '<div class="comments">Leave a comment Cancel reply</div>'
+            "<div>Powered by WordPress</div>"
+            "</main></body></html>"
+        ).encode("utf-8")
+
+        calls: list[str] = []
+
+        def fake_fetch(url):
+            calls.append(url)
+            return feed_xml if len(calls) == 1 else page_html
+
+        with patch("feeds._fetch_feed_bytes", side_effect=fake_fetch):
+            posts = fetch_recent_posts(
+                "https://example.com/feed",
+                window_hours=24,
+                cutoff=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(len(calls), 2)
+        self.assertIn("fake employee scams", posts[0].content_text)
+        self.assertNotIn("Leave a comment", posts[0].content_text)
+        self.assertNotIn("Powered by WordPress", posts[0].content_text)
+
+    def test_page_with_real_content_replaces_excerpt(self) -> None:
+        feed_xml = (
+            '<rss version="2.0"><channel><title>T</title>'
+            "<item><title>Deep dive</title>"
+            "<link>https://example.com/post</link>"
+            "<pubDate>Wed, 02 Sep 2026 06:00:00 +0000</pubDate>"
+            "<description>Climate</description></item>"
+            "</channel></rss>"
+        ).encode("utf-8")
+        body = "<p>" + "Substantial article content. " * 40 + "</p>"
+        page_html = (
+            "<html><body><main>"
+            f"<article><h1>Deep dive</h1>{body}</article>"
+            '<div class="sidebar">Related posts</div>'
+            '<nav>Pagination</nav>'
+            "</main></body></html>"
+        ).encode("utf-8")
+
+        calls: list[str] = []
+
+        def fake_fetch(url):
+            calls.append(url)
+            return feed_xml if len(calls) == 1 else page_html
+
+        with patch("feeds._fetch_feed_bytes", side_effect=fake_fetch):
+            posts = fetch_recent_posts(
+                "https://example.com/feed",
+                window_hours=24,
+                cutoff=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            )
+
+        self.assertIn("Substantial article content.", posts[0].content_text)
+        self.assertNotIn("Related posts", posts[0].content_text)
+        self.assertNotIn("Pagination", posts[0].content_text)
+
+    def test_inline_tag_line_breaks_are_rejoined(self) -> None:
+        feed_xml = (
+            '<rss version="2.0"><channel><title>T</title>'
+            "<item><title>Routers</title>"
+            "<link>https://example.com/post</link>"
+            "<pubDate>Wed, 02 Sep 2026 06:00:00 +0000</pubDate>"
+            "<description>&lt;p&gt;Comcast has &lt;em&gt;added&lt;/em&gt; "
+            "motion detection.&lt;/p&gt;&lt;p&gt;Second paragraph "
+            "here.&lt;/p&gt;</description>"
+            "</item></channel></rss>"
+        ).encode("utf-8")
+
+        with patch("feeds._fetch_feed_bytes", return_value=feed_xml):
+            posts = fetch_recent_posts(
+                "https://example.com/feed",
+                window_hours=24,
+                cutoff=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            )
+
+        self.assertIn("Comcast has added motion detection.", posts[0].content_text)
+        self.assertIn("Second paragraph here.", posts[0].content_text)
+
 
 class ExtractEntryHtmlTest(unittest.TestCase):
     def test_prefers_content_payload(self) -> None:

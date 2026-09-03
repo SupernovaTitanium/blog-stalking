@@ -76,6 +76,94 @@ _TITLE_MAX_LEN = 140
 _MIN_CONTENT_CHARS = 200
 _MAX_ARTICLE_FETCHES_PER_FEED = 6
 
+# Class/id fragments that mark boilerplate inside a fetched article page.
+_PAGE_JUNK_PATTERN = re.compile(
+    r"comment|sidebar|widget|nav|footer|related|share|social|subscribe|"
+    r"newsletter|respond|breadcrumb|pagination|promo|advert|byline",
+    re.IGNORECASE,
+)
+
+
+def _strip_page_junk(container) -> None:
+    def _remove(tags) -> None:
+        for tag in tags:
+            # An ancestor may already have been decomposed, nulling attrs.
+            if getattr(tag, "attrs", None) is not None:
+                tag.decompose()
+
+    _remove(
+        container(["script", "style", "nav", "header", "footer", "aside", "form", "noscript"])
+    )
+    doomed = []
+    for tag in container.find_all(True):
+        if getattr(tag, "attrs", None) is None:
+            continue
+        identifiers = " ".join(tag.get("class") or []) + " " + (tag.get("id") or "")
+        if identifiers and _PAGE_JUNK_PATTERN.search(identifiers):
+            doomed.append(tag)
+    _remove(doomed)
+
+
+def _normalize_text_blocks(raw: str) -> str:
+    """Rejoin lines that inline tags split mid-sentence.
+
+    ``get_text("\\n")`` breaks at every inline element (``Comcast has
+    <em>added</em> motion`` becomes three lines); join a line back to the
+    previous one when the previous does not end a sentence and the line
+    starts lowercase. Blank lines (real paragraph breaks) are preserved.
+    """
+    out: list[str] = []
+    for line in raw.split("\n"):
+        line = line.strip()
+        if not line:
+            out.append("")
+            continue
+        if out and out[-1]:
+            prev = out[-1]
+            if prev[-1] not in ".!?:;…\"'」』）)" and line[:1].islower():
+                out[-1] = prev + " " + line
+                continue
+        out.append(line)
+    return "\n".join(out).strip()
+
+
+def _fetch_article_content(url: str, current_text: str = "") -> tuple[str, str] | None:
+    """Fetch an article page and extract (html, text) of its main content.
+
+    Precise containers (article / .entry-content) win even when short — a
+    link-post's body legitimately is one sentence — while broad containers
+    (main / body) must clear a higher bar. Everything gets boilerplate
+    stripped, and the result only replaces the feed text when it adds real
+    substance; otherwise callers keep what the feed itself provided.
+    """
+    try:
+        payload = _fetch_feed_bytes(url)
+    except Exception:
+        return None
+    soup = BeautifulSoup(payload.decode("utf-8", errors="replace"), "html.parser")
+    _strip_page_junk(soup)
+
+    candidates = (
+        ("[itemprop=articleBody]", 60),
+        (".entry-content", 60),
+        (".post-content", 60),
+        ("article", 60),
+        ("main", 200),
+        ("body", 300),
+    )
+    for selector, floor in candidates:
+        node = soup.select_one(selector)
+        if node is None:
+            continue
+        text = _normalize_text_blocks(node.get_text("\n"))
+        if len(text) < floor:
+            continue
+        if current_text and len(text) < len(current_text) + 120:
+            # The page holds little beyond what the feed already gave.
+            return None
+        return node.decode(), text
+    return None
+
 # Feeds occasionally omit entry timestamps. Entries near the top of such
 # feeds are usually recent, so include the first few as "now" and let the
 # run-state seen-list suppress repeats; undated entries never evict dated
@@ -342,28 +430,6 @@ def _coerce_html_value(candidate: Any) -> str:
     return value or ""
 
 
-def _fetch_article_content(url: str) -> tuple[str, str] | None:
-    """Fetch an article page and extract (html, text) of its main content.
-
-    Returns None when the page is unreachable or yields too little text;
-    callers then keep whatever the feed itself provided.
-    """
-    try:
-        payload = _fetch_feed_bytes(url)
-    except Exception:
-        return None
-    soup = BeautifulSoup(payload.decode("utf-8", errors="replace"), "html.parser")
-    for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form", "noscript"]):
-        tag.decompose()
-    for node in (soup.find("article"), soup.find("main"), soup.body):
-        if node is None:
-            continue
-        text = node.get_text("\n").strip()
-        if len(text) >= _MIN_CONTENT_CHARS:
-            return node.decode(), text
-    return None
-
-
 def _extract_entry_html(entry: Mapping[str, Any]) -> str:
     html_candidates: list[str] = []
     content = entry.get("content")
@@ -441,14 +507,14 @@ def fetch_recent_posts(
 
         raw_html = _extract_entry_html(entry)
         soup = BeautifulSoup(raw_html or "", "html.parser")
-        text = soup.get_text("\n").strip()
+        text = _normalize_text_blocks(soup.get_text("\n"))
         if (
             len(text) < _MIN_CONTENT_CHARS
             and link.startswith("http")
             and article_fetches < _MAX_ARTICLE_FETCHES_PER_FEED
         ):
             article_fetches += 1
-            article = _fetch_article_content(link)
+            article = _fetch_article_content(link, current_text=text)
             if article is not None:
                 raw_html, text = article
         title = (getattr(entry, "title", "") or text or "New post").strip()
