@@ -23,12 +23,12 @@ jobs:
           BLOG_FEED_URL: ${{ vars.BLOG_FEED_URL || '' }}
           WINDOW_HOURS: ${{ vars.WINDOW_HOURS || '24' }}
           MAX_POST_NUM: ${{ vars.MAX_POST_NUM || '-1' }}
-          MAX_POSTS_PER_FEED: ${{ vars.MAX_POSTS_PER_FEED || '2' }}
+          MAX_POSTS_PER_FEED: ${{ vars.MAX_POSTS_PER_FEED || '-1' }}
           SEND_EMPTY: ${{ vars.SEND_EMPTY || 'false' }}
           TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE || 'Chinese (Traditional)' }}
-          TRANSLATION_MAX_CHARS: ${{ vars.TRANSLATION_MAX_CHARS || '4000' }}
+          TRANSLATION_MAX_CHARS: ${{ vars.TRANSLATION_MAX_CHARS || '-1' }}
           EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX || 'Blog Pusher Digest' }}
-          EMAIL_MAX_POSTS: ${{ vars.EMAIL_MAX_POSTS || '15' }}
+          EMAIL_MAX_POSTS: ${{ vars.EMAIL_MAX_POSTS || '5' }}
           EMAIL_MAX_BYTES: ${{ vars.EMAIL_MAX_BYTES || '90000' }}
           EMAIL_HTML_DIR: ${{ vars.EMAIL_HTML_DIR || 'artifacts' }}
           FETCH_WORKERS: ${{ vars.FETCH_WORKERS || '8' }}

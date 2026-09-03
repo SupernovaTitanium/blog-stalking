@@ -55,12 +55,12 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | `BLOG_FEED_URL` | *(blank)* | Second legacy slot for quick experiments. |
 | `WINDOW_HOURS` | `24` | Look-back window when fetching posts. |
 | `MAX_POST_NUM` | `-1` | Limit on how many posts to send (`-1` keeps everything). |
-| `MAX_POSTS_PER_FEED` | `2` | Limit on how many posts to keep per feed (`-1` keeps everything). |
+| `MAX_POSTS_PER_FEED` | `-1` | Limit on how many posts to keep per feed (`-1` keeps everything). |
 | `SEND_EMPTY` | `false` | Set to `true` to force an email even when no posts are new. |
 | `TARGET_LANGUAGE` | `Chinese (Traditional)` | Translation language. |
-| `TRANSLATION_MAX_CHARS` | `4000` | Cap characters per article sent for full translation (`-1` = translate the entire article). The original text in the email is never truncated. |
+| `TRANSLATION_MAX_CHARS` | `-1` | Cap characters per article sent for full translation (`-1` = translate the entire article). The original text in the email is never truncated. |
 | `EMAIL_SUBJECT_PREFIX` | `Blog Pusher Digest` | Prefix for the email subject line. |
-| `EMAIL_MAX_POSTS` | `15` | Maximum posts per digest email; extras split into `(2/3)`-style parts, each with its own summary + full text. |
+| `EMAIL_MAX_POSTS` | `5` | Maximum posts per digest email; extras split into `(2/3)`-style parts, each with its own summary + full text. |
 | `EMAIL_MAX_BYTES` | `90000` | Approximate HTML size cap per email (Gmail clips messages around 102KB). |
 | `EMAIL_HTML_DIR` | `artifacts` | Every rendered email is archived here and uploaded as a workflow artifact; `none` disables. |
 | `FAILURE_LOG` | *(blank)* | Optional path to write feed fetch failures (useful for debugging/test runs). |
