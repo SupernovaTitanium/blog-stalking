@@ -560,5 +560,256 @@
     "tags": [
       "security"
     ]
+  },
+  {
+    "name": "Xi'an's Og",
+    "site": "https://xianblog.wordpress.com",
+    "feed": "https://xianblog.wordpress.com/feed/",
+    "owner": "Christian Robert",
+    "category": "Individual researcher",
+    "description": "Bayesian statistics from a Paris-Dauphine professor.",
+    "tags": [
+      "statistics",
+      "bayesian",
+      "r"
+    ]
+  },
+  {
+    "name": "Statistical Thinking",
+    "site": "https://www.fharrell.com",
+    "feed": "https://www.fharrell.com/index.xml",
+    "owner": "Frank Harrell",
+    "category": "Individual researcher",
+    "description": "Biostatistics and regression modeling from Vanderbilt.",
+    "tags": [
+      "statistics",
+      "biostatistics"
+    ]
+  },
+  {
+    "name": "Peter Cameron's Blog",
+    "site": "https://cameroncounts.wordpress.com",
+    "feed": "https://cameroncounts.wordpress.com/feed/",
+    "owner": "Peter Cameron",
+    "category": "Individual researcher",
+    "description": "Combinatorics and mathematics culture from QMUL.",
+    "tags": [
+      "math",
+      "combinatorics"
+    ]
+  },
+  {
+    "name": "Joel David Hamkins",
+    "site": "https://jdh.hamkins.org",
+    "feed": "https://jdh.hamkins.org/feed/",
+    "owner": "Joel David Hamkins",
+    "category": "Individual researcher",
+    "description": "Set theory, logic, and philosophy of mathematics.",
+    "tags": [
+      "math",
+      "logic",
+      "set theory"
+    ]
+  },
+  {
+    "name": "Eli Bendersky",
+    "site": "https://eli.thegreenplace.net",
+    "feed": "https://eli.thegreenplace.net/feed/",
+    "owner": "Eli Bendersky",
+    "category": "Individual engineer",
+    "description": "Compilers, Go, systems and computing deep dives.",
+    "tags": [
+      "systems",
+      "compilers",
+      "go"
+    ]
+  },
+  {
+    "name": "Nicholas Carlini",
+    "site": "https://nicholas.carlini.com",
+    "feed": "https://nicholas.carlini.com/writing/feed.xml",
+    "owner": "Nicholas Carlini",
+    "category": "Individual researcher",
+    "description": "ML security, adversarial attacks, and LLM research essays.",
+    "tags": [
+      "ml security",
+      "adversarial",
+      "llm"
+    ]
+  },
+  {
+    "name": "Matt Godbolt",
+    "site": "https://xania.org",
+    "feed": "https://xania.org/feed.atom",
+    "owner": "Matt Godbolt",
+    "category": "Individual engineer",
+    "description": "Compiler Explorer author; compilers and tooling.",
+    "tags": [
+      "compilers",
+      "tools",
+      "c++"
+    ]
+  },
+  {
+    "name": "Freedom to Tinker",
+    "site": "https://freedom-to-tinker.com",
+    "feed": "https://freedom-to-tinker.com/feed/",
+    "category": "Research collective",
+    "description": "Princeton CITP group blog on tech policy and security.",
+    "tags": [
+      "policy",
+      "security"
+    ]
+  },
+  {
+    "name": "rygorous",
+    "site": "https://fgiesen.wordpress.com",
+    "feed": "https://fgiesen.wordpress.com/feed/",
+    "owner": "Fabian Giesen",
+    "category": "Individual engineer",
+    "description": "Compression, graphics, and low-level performance.",
+    "tags": [
+      "compression",
+      "graphics",
+      "performance"
+    ]
+  },
+  {
+    "name": "Cryptographic Engineering",
+    "site": "https://blog.cryptographyengineering.com",
+    "feed": "https://blog.cryptographyengineering.com/feed/",
+    "owner": "Matthew Green",
+    "category": "Individual researcher",
+    "description": "Cryptography research and commentary from Johns Hopkins.",
+    "tags": [
+      "cryptography",
+      "security"
+    ]
+  },
+  {
+    "name": "Filippo Valsorda",
+    "site": "https://words.filippo.io",
+    "feed": "https://words.filippo.io/rss/",
+    "owner": "Filippo Valsorda",
+    "category": "Individual researcher",
+    "description": "Practical cryptography and Go security.",
+    "tags": [
+      "cryptography",
+      "security",
+      "go"
+    ]
+  },
+  {
+    "name": "Google Online Security Blog",
+    "site": "https://security.googleblog.com",
+    "feed": "https://security.googleblog.com/feeds/posts/default",
+    "category": "Industry research lab",
+    "description": "Security and privacy research from Google.",
+    "tags": [
+      "security"
+    ]
+  },
+  {
+    "name": "Project Zero",
+    "site": "https://googleprojectzero.blogspot.com",
+    "feed": "https://googleprojectzero.blogspot.com/feeds/posts/default",
+    "category": "Industry research lab",
+    "description": "Google's vulnerability research team.",
+    "tags": [
+      "security",
+      "vulnerability research"
+    ]
+  },
+  {
+    "name": "Trail of Bits",
+    "site": "https://blog.trailofbits.com",
+    "feed": "https://blog.trailofbits.com/feed/",
+    "category": "Industry research lab",
+    "description": "Security research and tooling from Trail of Bits.",
+    "tags": [
+      "security",
+      "cryptography"
+    ]
+  },
+  {
+    "name": "TaoSecurity",
+    "site": "https://taosecurity.blogspot.com",
+    "feed": "https://taosecurity.blogspot.com/feeds/posts/default",
+    "owner": "Richard Bejtlich",
+    "category": "Individual researcher",
+    "description": "Network security monitoring and incident response.",
+    "tags": [
+      "security",
+      "nsm"
+    ]
+  },
+  {
+    "name": "Cloudflare Blog",
+    "site": "https://blog.cloudflare.com",
+    "feed": "https://blog.cloudflare.com/rss/",
+    "category": "Industry research lab",
+    "description": "Research-heavy engineering posts from Cloudflare.",
+    "tags": [
+      "security",
+      "infrastructure"
+    ]
+  },
+  {
+    "name": "Microsoft Research Blog",
+    "site": "https://www.microsoft.com/en-us/research/blog/",
+    "feed": "https://www.microsoft.com/en-us/research/feed/",
+    "category": "Industry research lab",
+    "description": "Research highlights from Microsoft Research.",
+    "tags": [
+      "research",
+      "ai"
+    ]
+  },
+  {
+    "name": "Apple ML Research",
+    "site": "https://machinelearning.apple.com",
+    "feed": "https://machinelearning.apple.com/rss.xml",
+    "category": "Industry research lab",
+    "description": "Machine learning research from Apple.",
+    "tags": [
+      "ml",
+      "research"
+    ]
+  },
+  {
+    "name": "Radford Neal's Blog",
+    "site": "https://radfordneal.wordpress.com",
+    "feed": "https://radfordneal.wordpress.com/feed/",
+    "owner": "Radford Neal",
+    "category": "Individual researcher",
+    "description": "Statistics and Bayesian computation (inventor of HMC).",
+    "tags": [
+      "statistics",
+      "bayesian"
+    ]
+  },
+  {
+    "name": "Igor Pak",
+    "site": "https://igorpak.wordpress.com",
+    "feed": "https://igorpak.wordpress.com/feed/",
+    "owner": "Igor Pak",
+    "category": "Individual researcher",
+    "description": "Combinatorics from UCLA.",
+    "tags": [
+      "math",
+      "combinatorics"
+    ]
+  },
+  {
+    "name": "inFERENCe",
+    "site": "https://www.inference.vc",
+    "feed": "https://www.inference.vc/rss/",
+    "owner": "Ferenc Huszár",
+    "category": "Individual researcher",
+    "description": "Probabilistic ML and generative modeling commentary.",
+    "tags": [
+      "ml",
+      "probabilistic"
+    ]
   }
 ]

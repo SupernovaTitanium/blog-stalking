@@ -111,6 +111,7 @@ All monitored sources live in `feeds/blogs.json`. Each entry accepts either a ra
 | Amazon Science | Industry research lab · industry, research, amazon | https://www.amazon.science/blog |
 | Andrej Karpathy Bear Blog | — | https://karpathy.bearblog.dev |
 | Andrej Karpathy Blog | — | https://karpathy.github.io |
+| Apple ML Research | Industry research lab · ml, research | https://machinelearning.apple.com |
 | arg min | — | https://argmin.substack.com |
 | Azimuth | Individual researcher · math, category theory | https://johncarlosbaez.wordpress.com |
 | BAIR Blog | Academic lab · ai, research, berkeley | https://bair.berkeley.edu/blog |
@@ -118,23 +119,32 @@ All monitored sources live in `feeds/blogs.json`. Each entry accepts either a ra
 | Bounded Rationality | Individual researcher · ml, information theory | https://bjlkeng.github.io |
 | Brendan Greggs Blog | — | https://www.brendangregg.com/blog |
 | Chris McCormick | — | https://mccormickml.com |
+| Cloudflare Blog | Industry research lab · security, infrastructure | https://blog.cloudflare.com |
 | Computational Complexity Blog | — | https://blog.computationalcomplexity.org |
 | Connectionism | — | https://thinkingmachines.ai/blog |
+| Cryptographic Engineering | Individual researcher · cryptography, security | https://blog.cryptographyengineering.com |
 | Dan Luu | — | https://danluu.com |
 | DeepMind Blog | Industry research lab · ai, research, deepmind | https://deepmind.google/blog |
 | Differential Privacy | Community blog · privacy, community | https://differentialprivacy.org |
 | Drew DeVault | Individual engineer · systems, open source, rust | https://drewdevault.com |
+| Eli Bendersky | Individual engineer · systems, compilers, go | https://eli.thegreenplace.net |
 | Ethan N Epperly | Individual researcher · econometrics, causal inference | https://www.ethanepperly.com |
 | Eugene Yan | Individual researcher · ml systems, llm, practice | https://eugeneyan.com |
 | Fabien Sanglard | — | https://fabiensanglard.net |
+| Filippo Valsorda | Individual researcher · cryptography, security, go | https://words.filippo.io |
+| Freedom to Tinker | Research collective · policy, security | https://freedom-to-tinker.com |
 | Gil Kalai | Individual researcher · math, quantum, combinatorics | https://gilkalai.wordpress.com |
 | Godels Lost Letter and P=NP | — | https://rjlipton.com |
+| Google Online Security Blog | Industry research lab · security | https://security.googleblog.com |
 | Google Research Blog | Industry research lab · ai, research | https://research.google/blog/ |
 | Gowerss Weblog | — | https://gowers.wordpress.com |
 | Greg Brockman | — | https://blog.gregbrockman.com |
 | Hugging Face Blog | Industry research lab · ai, open source | https://huggingface.co/blog |
+| Igor Pak | Individual researcher · math, combinatorics | https://igorpak.wordpress.com |
+| inFERENCe | Individual researcher · ml, probabilistic | https://www.inference.vc |
 | int8.io | Individual researcher · quantization, hardware, deep learning | https://int8.io |
 | Interconnects | Individual newsletter · llm, rlhf, newsletter | https://www.interconnects.ai |
+| Joel David Hamkins | Individual researcher · math, logic, set theory | https://jdh.hamkins.org |
 | John D Cook Blog | — | https://www.johndcook.com/blog |
 | Julia Evans | Individual engineer · systems, debugging | https://jvns.ca |
 | Krebs on Security | Individual journalist · security | https://krebsonsecurity.com |
@@ -142,16 +152,22 @@ All monitored sources live in `feeds/blogs.json`. Each entry accepts either a ra
 | Machine Learning Research Blog | — | https://francisbach.com |
 | Machine Learning Theory | — | https://hunch.net |
 | Math and Programming | — | https://jeremykun.com |
+| Matt Godbolt | Individual engineer · compilers, tools, c++ | https://xania.org |
+| Microsoft Research Blog | Industry research lab · research, ai | https://www.microsoft.com/en-us/research/blog/ |
 | ML@CMU | — | https://blog.ml.cmu.edu |
 | NeurIPS Blog | — | https://blog.neurips.cc |
+| Nicholas Carlini | Individual researcher · ml security, adversarial, llm | https://nicholas.carlini.com |
 | Not Even Wrong | Individual researcher · math, physics | https://www.math.columbia.edu/~woit/wordpress/ |
 | One Trivial Observation at a Time | Individual researcher · optimization, game theory | https://www.pokutta.com/blog |
 | OpenAI Blog | Industry research lab · ai, openai, research | https://openai.com/news |
 | Parameter-free Learning and Optimization | — | https://parameterfree.com |
-| Paul Graham Essays | Individual essayist · startups, essays, programming | https://paulgraham.com |
+| Peter Cameron's Blog | Individual researcher · math, combinatorics | https://cameroncounts.wordpress.com |
+| Project Zero | Industry research lab · security, vulnerability research | https://googleprojectzero.blogspot.com |
 | Quomodocumque | Individual researcher · math, number theory | https://quomodocumque.wordpress.com |
+| Radford Neal's Blog | Individual researcher · statistics, bayesian | https://radfordneal.wordpress.com |
 | Rands in Repose | — | https://randsinrepose.com |
 | Redwood Research | — | https://blog.redwoodresearch.org |
+| rygorous | Individual engineer · compression, graphics, performance | https://fgiesen.wordpress.com |
 | Sam Altman | — | https://blog.samaltman.com |
 | Schneier on Security | — | https://www.schneier.com |
 | Sebastian Raschka | Individual researcher · deep learning, tutorials | https://sebastianraschka.com |
@@ -159,14 +175,18 @@ All monitored sources live in `feeds/blogs.json`. Each entry accepts either a ra
 | Simon Willison | Individual engineer · data, open source, notes | https://simonwillison.net |
 | Sorta Insightful | Individual researcher · ml, alignment, essays | https://www.alexirpan.com |
 | Statistical Modeling | Individual researcher · statistics, causal inference | https://statmodeling.stat.columbia.edu |
+| Statistical Thinking | Individual researcher · statistics, biostatistics | https://www.fharrell.com |
+| TaoSecurity | Individual researcher · security, nsm | https://taosecurity.blogspot.com |
 | The Gradient | — | https://thegradient.pub |
 | The n-Category Cafe | Research collective · math, category theory | https://golem.ph.utexas.edu/category/ |
 | The Old New Thing | Individual engineer · windows, systems, history | https://devblogs.microsoft.com/oldnewthing/ |
 | The Wild Week in AI | Individual newsletter · newsletter, ai, curation | https://dennybritz.com |
 | Theory of Computing Report | Community newsletter · tcs, jobs, community | https://theory.report |
 | Tim van Erven | Individual researcher · pac-bayes, ml theory | https://www.timvanerven.nl |
+| Trail of Bits | Industry research lab · security, cryptography | https://blog.trailofbits.com |
 | Vitalik Buterin | Individual researcher · math, crypto, economics | https://vitalik.eth.limo |
 | Windows on Theory | — | https://windowsontheory.org |
+| Xi'an's Og | Individual researcher · statistics, bayesian, r | https://xianblog.wordpress.com |
 
 #### Source metadata
 Each entry in `feeds/blogs.json` can optionally specify additional keys that are rendered inside the email digest:
