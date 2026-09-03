@@ -28,7 +28,7 @@
   ```
 
 ## Production workflow
-- Nightly GitHub Action at 22:00 UTC (Taipei 06:00): `.github/workflows/main.yml`
+- Nightly GitHub Action at 22:00 UTC (UTC+3 01:00 next day): `.github/workflows/main.yml`
 - Uses `FEED_LIST` + optional `FEED_URL`/`BLOG_FEED_URL`; `MAX_POST_NUM` caps total posts; `MAX_POSTS_PER_FEED` caps per-feed items (default `2`).
 - After a successful run, `state/last_run.json` (window end + delivered post keys) is committed back so the next run never misses the gap left by delays or failures; rendered digest HTML is uploaded as an artifact.
 

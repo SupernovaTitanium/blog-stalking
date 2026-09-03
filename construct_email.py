@@ -320,15 +320,15 @@ SUMMARY_ITEM_TEMPLATE = """\
 </div>
 """
 
-# Taiwan has no DST, so a fixed offset is exact; pinning it avoids the
-# digest showing whatever timezone the machine running the workflow
-# happens to have (Actions = UTC, a dev box = anything).
-_TAIPEI_TZ = timezone(timedelta(hours=8))
+# Saudi Arabia Standard Time has no DST, so a fixed offset is exact; pinning
+# it avoids the digest showing whatever timezone the machine running the
+# workflow happens to have (Actions = UTC, a dev box = anything).
+_DIGEST_TZ = timezone(timedelta(hours=3))
 
 
 def _format_datetime(dt_obj: datetime) -> str:
-    local = dt_obj.astimezone(_TAIPEI_TZ)
-    return local.strftime("%Y-%m-%d %H:%M UTC+8")
+    local = dt_obj.astimezone(_DIGEST_TZ)
+    return local.strftime("%Y-%m-%d %H:%M UTC+3")
 
 
 def _is_escaped(text: str, idx: int) -> bool:

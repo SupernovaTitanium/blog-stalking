@@ -72,7 +72,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | `NVIDIA_API_URL` | `https://integrate.api.nvidia.com/v1/chat/completions` | NVIDIA chat completions endpoint. |
 | `NVIDIA_RPM` | `4` | Maximum NVIDIA chat completion requests per minute. |
 
-4. **Trigger the workflow** from the Actions tab or wait for the nightly schedule — 22:00 UTC daily (Taipei 06:00). Check the run logs and the uploaded `digest-*` artifacts for rendering and SMTP delivery details.
+4. **Trigger the workflow** from the Actions tab or wait for the nightly schedule — 22:00 UTC daily (01:00 UTC+3 the next day; digest timestamps render in UTC+3). Check the run logs and the uploaded `digest-*` artifacts for rendering and SMTP delivery details.
 
 > **No-gap delivery**: after each successful run the workflow commits `state/last_run.json` back to the repository, so a delayed schedule or a failed day is automatically covered on the next run, and overlapping windows never send the same post twice.
 

@@ -28,17 +28,17 @@ def _post(summary: str) -> FeedPost:
 
 
 class DatetimeFormattingTest(unittest.TestCase):
-    def test_published_time_is_pinned_to_utc8(self) -> None:
+    def test_published_time_is_pinned_to_utc3(self) -> None:
         # Machine-local timezones (Actions=UTC, a dev box=anything) must not
-        # leak into the digest; always render Taipei time.
+        # leak into the digest; always render Saudi Arabia Standard Time.
         utc_time = datetime(2026, 9, 1, 19, 52, tzinfo=timezone.utc)
 
-        self.assertEqual(_format_datetime(utc_time), "2026-09-02 03:52 UTC+8")
+        self.assertEqual(_format_datetime(utc_time), "2026-09-01 22:52 UTC+3")
 
-    def test_non_utc_input_still_lands_on_utc8(self) -> None:
-        plus3 = datetime(2026, 9, 1, 22, 52, tzinfo=timezone(timedelta(hours=3)))
+    def test_non_utc_input_still_lands_on_utc3(self) -> None:
+        plus8 = datetime(2026, 9, 2, 3, 52, tzinfo=timezone(timedelta(hours=8)))
 
-        self.assertEqual(_format_datetime(plus3), "2026-09-02 03:52 UTC+8")
+        self.assertEqual(_format_datetime(plus8), "2026-09-01 22:52 UTC+3")
 
 
 class EmailMathRenderingTest(unittest.TestCase):
