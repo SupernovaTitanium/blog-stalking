@@ -811,5 +811,210 @@
       "ml",
       "probabilistic"
     ]
+  },
+  {
+    "name": "bunnie's blog",
+    "site": "https://www.bunniestudios.com",
+    "feed": "https://www.bunniestudios.com/blog/feed/",
+    "owner": "Andrew 'bunnie' Huang",
+    "category": "Individual engineer",
+    "description": "Hardware hacking, reverse engineering, and open-source silicon.",
+    "tags": [
+      "hardware",
+      "reverse engineering",
+      "fpga"
+    ]
+  },
+  {
+    "name": "lcamtuf's blog",
+    "site": "https://lcamtuf.substack.com",
+    "feed": "https://lcamtuf.substack.com/feed",
+    "owner": "Michal Zalewski",
+    "category": "Individual researcher",
+    "description": "Hardware, sensors, and security experiments (AFL author, ex-Google).",
+    "tags": [
+      "security",
+      "hardware",
+      "fuzzing"
+    ]
+  },
+  {
+    "name": "Gynvael Coldwind",
+    "site": "https://gynvael.coldwind.pl",
+    "feed": "https://gynvael.coldwind.pl/?rss=en",
+    "owner": "Gynvael Coldwind",
+    "category": "Individual researcher",
+    "description": "Security engineering at Google; CTF world champion.",
+    "tags": [
+      "security",
+      "ctf",
+      "reverse engineering"
+    ]
+  },
+  {
+    "name": "Marc Brooker",
+    "site": "https://brooker.co.za/blog/",
+    "feed": "https://brooker.co.za/blog/atom.xml",
+    "owner": "Marc Brooker",
+    "category": "Individual engineer",
+    "description": "Distributed systems from an Amazon principal engineer.",
+    "tags": [
+      "distributed systems",
+      "cloud",
+      "databases"
+    ]
+  },
+  {
+    "name": "Xe Iaso",
+    "site": "https://xeiaso.net",
+    "feed": "https://xeiaso.net/blog.rss",
+    "owner": "Xe Iaso",
+    "category": "Individual engineer",
+    "description": "Systems, Nix, and infrastructure from a Tailscale engineer.",
+    "tags": [
+      "systems",
+      "nix",
+      "infrastructure"
+    ]
+  },
+  {
+    "name": "The Pragmatic Engineer",
+    "site": "https://blog.pragmaticengineer.com",
+    "feed": "https://blog.pragmaticengineer.com/feed/",
+    "owner": "Gergely Orosz",
+    "category": "Individual newsletter",
+    "description": "Big-tech engineering deep dives (ex-Uber).",
+    "tags": [
+      "engineering",
+      "big tech",
+      "newsletter"
+    ]
+  },
+  {
+    "name": "Faster Than Lime",
+    "site": "https://fasterthanli.me",
+    "feed": "https://fasterthanli.me/index.xml",
+    "owner": "Amos Wenger",
+    "category": "Individual engineer",
+    "description": "Rust and systems programming deep dives.",
+    "tags": [
+      "rust",
+      "systems"
+    ]
+  },
+  {
+    "name": "Command Center",
+    "site": "https://commandcenter.blogspot.com",
+    "feed": "https://commandcenter.blogspot.com/feeds/posts/default",
+    "owner": "Rob Pike",
+    "category": "Individual researcher",
+    "description": "Programming essays from the Unix/Go legend.",
+    "tags": [
+      "go",
+      "unix",
+      "programming"
+    ]
+  },
+  {
+    "name": "lucumr",
+    "site": "https://lucumr.pocoo.org",
+    "feed": "https://lucumr.pocoo.org/feed.atom",
+    "owner": "Armin Ronacher",
+    "category": "Individual engineer",
+    "description": "Python, Flask creator; recent LLM engineering essays.",
+    "tags": [
+      "python",
+      "llm",
+      "engineering"
+    ]
+  },
+  {
+    "name": "matklad",
+    "site": "https://matklad.github.io",
+    "feed": "https://matklad.github.io/feed.xml",
+    "owner": "Aleksey Kladov",
+    "category": "Individual engineer",
+    "description": "rust-analyzer author on parsers, tooling, and Rust.",
+    "tags": [
+      "rust",
+      "tooling",
+      "parsers"
+    ]
+  },
+  {
+    "name": "Overreacted",
+    "site": "https://overreacted.io",
+    "feed": "https://overreacted.io/rss.xml",
+    "owner": "Dan Abramov",
+    "category": "Individual engineer",
+    "description": "React core team reflections on UI engineering.",
+    "tags": [
+      "react",
+      "javascript",
+      "ui"
+    ]
+  },
+  {
+    "name": "Addy Osmani",
+    "site": "https://addyosmani.com",
+    "feed": "https://addyosmani.com/feed.xml",
+    "owner": "Addy Osmani",
+    "category": "Individual engineer",
+    "description": "Web performance and engineering leadership at Chrome.",
+    "tags": [
+      "web performance",
+      "javascript",
+      "chrome"
+    ]
+  },
+  {
+    "name": "Coding Horror",
+    "site": "https://blog.codinghorror.com",
+    "feed": "https://blog.codinghorror.com/rss/",
+    "owner": "Jeff Atwood",
+    "category": "Individual essayist",
+    "description": "Stack Overflow co-founder on software and human factors.",
+    "tags": [
+      "engineering culture",
+      "essays"
+    ]
+  },
+  {
+    "name": "Lea Verou",
+    "site": "https://lea.verou.me",
+    "feed": "https://lea.verou.me/feed.xml",
+    "owner": "Lea Verou",
+    "category": "Individual researcher",
+    "description": "CSS Working Group member; web platform and design.",
+    "tags": [
+      "css",
+      "web platform"
+    ]
+  },
+  {
+    "name": "Hillel Wayne",
+    "site": "https://www.hillelwayne.com",
+    "feed": "https://www.hillelwayne.com/index.xml",
+    "owner": "Hillel Wayne",
+    "category": "Individual educator",
+    "description": "Formal methods (TLA+), software history, and engineering.",
+    "tags": [
+      "formal methods",
+      "tla+",
+      "engineering"
+    ]
+  },
+  {
+    "name": "Ken Shirriff's blog",
+    "site": "https://www.righto.com",
+    "feed": "https://www.blogger.com/feeds/6264947694886887540/posts/default",
+    "owner": "Ken Shirriff",
+    "category": "Individual engineer",
+    "description": "Computer history, IC reverse engineering (official Blogger feed; the site's own RSS sits behind a Cloudflare challenge).",
+    "tags": [
+      "hardware",
+      "reverse engineering",
+      "history"
+    ]
   }
 ]
