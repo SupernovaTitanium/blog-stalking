@@ -59,6 +59,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | `SEND_EMPTY` | `false` | Set to `true` to force an email even when no posts are new. |
 | `TARGET_LANGUAGE` | `Chinese (Traditional)` | Translation language. |
 | `TRANSLATION_MAX_CHARS` | `-1` | Cap characters per article sent for full translation (`-1` = translate the entire article). The original text in the email is never truncated. |
+| `TRANSLATION_CHUNK_CHARS` | `-1` | Chunk size for translation requests; `-1` sends the whole article to the model in a single request, `0` uses the built-in 4000-char chunks, a positive number sets a custom size. |
 | `EMAIL_SUBJECT_PREFIX` | `Blog Pusher Digest` | Prefix for the email subject line. |
 | `EMAIL_MAX_POSTS` | `5` | Maximum posts per digest email; extras split into `(2/3)`-style parts, each with its own summary + full text. |
 | `EMAIL_MAX_BYTES` | `90000` | Approximate HTML size cap per email (Gmail clips messages around 102KB). |

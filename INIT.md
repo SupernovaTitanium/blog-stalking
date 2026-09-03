@@ -45,7 +45,7 @@
 ## Useful flags
 - `--feed_list`, `--feed_url`, `--blog_feed_url`
 - `--window_hours`, `--max_post_num`, `--max_posts_per_feed`
-- `--target_language`, `--translation_max_chars`
+- `--target_language`, `--translation_max_chars`, `--translation_chunk_chars`
 - `--email_max_posts`, `--email_max_bytes`, `--email_html_dir`
 - `--fetch_workers`, `--state_file`, `--state_max_backtrack_hours`
 - `--failure_log`

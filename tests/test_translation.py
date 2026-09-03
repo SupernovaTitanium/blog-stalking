@@ -296,5 +296,61 @@ class FeedTranslationJsonSchemaTest(unittest.TestCase):
         sleep_mock.assert_called_once_with(1.0)
 
 
+class TranslationChunkingTest(unittest.TestCase):
+    LONG_TEXT = ("Paragraph with a few sentences. " * 8 + "\n\n") * 40  # ~13k chars
+
+    def _translator(self, **kwargs) -> OpenAITranslator:
+        return OpenAITranslator(
+            api_key="test-key",
+            model="glm-5.3",
+            target_language="Chinese (Traditional)",
+            **kwargs,
+        )
+
+    def _mock_create(self, translator) -> MagicMock:
+        mock_response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content='{"translation":"完整中文翻譯"}'),
+                )
+            ]
+        )
+        create_mock = MagicMock(return_value=mock_response)
+        translator.client.chat.completions.create = create_mock
+        return create_mock
+
+    def test_negative_chunk_chars_sends_whole_article_in_one_request(self) -> None:
+        translator = self._translator(chunk_chars=-1)
+        create_mock = self._mock_create(translator)
+
+        result = translator.translate_batch([self.LONG_TEXT])
+
+        self.assertEqual(result, ["完整中文翻譯"])
+        self.assertEqual(create_mock.call_count, 1)
+        sent = create_mock.call_args.kwargs["messages"][1]["content"]
+        self.assertEqual(len(sent), len(self.LONG_TEXT))
+
+    def test_positive_chunk_chars_overrides_chunk_size(self) -> None:
+        translator = self._translator(chunk_chars=300)
+        create_mock = self._mock_create(translator)
+
+        translator.translate_batch([self.LONG_TEXT])
+
+        self.assertGreater(create_mock.call_count, 1)
+        for call in create_mock.call_args_list:
+            self.assertLessEqual(len(call.kwargs["messages"][1]["content"]), 300)
+
+    def test_zero_chunk_chars_falls_back_to_max_chars(self) -> None:
+        translator = self._translator(chunk_chars=0, max_chars=500)
+        create_mock = self._mock_create(translator)
+
+        translator.translate_batch([self.LONG_TEXT])
+
+        self.assertGreater(create_mock.call_count, 1)
+        for call in create_mock.call_args_list:
+            self.assertLessEqual(len(call.kwargs["messages"][1]["content"]), 500)
+
+
 if __name__ == "__main__":
     unittest.main()

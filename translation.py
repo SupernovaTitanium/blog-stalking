@@ -72,6 +72,7 @@ class OpenAITranslator:
         target_language: str,
         max_chars: int = 4000,
         max_total_chars: int = 12000,
+        chunk_chars: int = 0,
         temperature: float | None = None,
         provider: str = "openai",
         nvidia_api_url: str | None = None,
@@ -109,9 +110,16 @@ class OpenAITranslator:
         self.target_language = target_language
         self.max_chars = max_chars
         self.max_total_chars = max_total_chars
+        # Translation chunking override: 0 = follow max_chars (legacy),
+        # >0 = chunk at this size, <0 = never chunk (one request per article).
+        self.chunk_chars = int(chunk_chars)
         self.temperature = temperature
         self._max_filter_depth = 3
         self._rate_limit_exhausted = False
+
+    @property
+    def _chunk_limit(self) -> int:
+        return self.chunk_chars if self.chunk_chars > 0 else self.max_chars
 
     def _coerce_nvidia_base_url(
         self,
@@ -317,7 +325,10 @@ class OpenAITranslator:
                 translations.append("")
                 continue
 
-            chunks = self._chunk_text(text)
+            if self.chunk_chars < 0:
+                chunks: List[str] = [text]
+            else:
+                chunks = self._chunk_text(text)
             logger.debug(
                 f"Translating text with {len(chunks)} chunk(s) (total chars: {len(text)})"
             )
@@ -649,7 +660,7 @@ class OpenAITranslator:
         return combined or "[Translation skipped: blocked by content filter]"
 
     def _chunk_text(self, text: str) -> List[str]:
-        if len(text) <= self.max_chars:
+        if len(text) <= self._chunk_limit:
             return [text]
 
         chunks: List[str] = []
@@ -667,7 +678,7 @@ class OpenAITranslator:
         for paragraph in paragraphs:
             para = paragraph.strip()
             para_len = len(para)
-            if para_len > self.max_chars:
+            if para_len > self._chunk_limit:
                 flush_current()
                 chunks.extend(self._split_long_text(para))
                 continue
@@ -678,7 +689,7 @@ class OpenAITranslator:
                 continue
 
             projected_len = current_len + 2 + para_len  # account for double newline
-            if projected_len <= self.max_chars:
+            if projected_len <= self._chunk_limit:
                 current.append(para)
                 current_len = projected_len
             else:
@@ -710,7 +721,7 @@ class OpenAITranslator:
         start = 0
         length = len(text)
         while start < length:
-            end = min(start + self.max_chars, length)
+            end = min(start + self._chunk_limit, length)
             # try to backtrack to nearest space to avoid breaking tokens
             if end < length:
                 space = text.rfind(" ", start, end)

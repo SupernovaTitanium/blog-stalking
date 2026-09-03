@@ -27,6 +27,7 @@ jobs:
           SEND_EMPTY: ${{ vars.SEND_EMPTY || 'false' }}
           TARGET_LANGUAGE: ${{ vars.TARGET_LANGUAGE || 'Chinese (Traditional)' }}
           TRANSLATION_MAX_CHARS: ${{ vars.TRANSLATION_MAX_CHARS || '-1' }}
+          TRANSLATION_CHUNK_CHARS: ${{ vars.TRANSLATION_CHUNK_CHARS || '-1' }}
           EMAIL_SUBJECT_PREFIX: ${{ vars.EMAIL_SUBJECT_PREFIX || 'Blog Pusher Digest' }}
           EMAIL_MAX_POSTS: ${{ vars.EMAIL_MAX_POSTS || '5' }}
           EMAIL_MAX_BYTES: ${{ vars.EMAIL_MAX_BYTES || '90000' }}

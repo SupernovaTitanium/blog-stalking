@@ -4,7 +4,7 @@
 1) Entry (`main.py`): load feed configs (`feeds/blogs.json` + optional `FEED_URL`/`BLOG_FEED_URL`), de-duplicate, respect `WINDOW_HOURS`, `MAX_POST_NUM`, `MAX_POSTS_PER_FEED`.
 2) Run state (`run_state.py`): load `STATE_FILE` (default `state/last_run.json`); the fetch cutoff is `min(now - window, max(last window_end - 10min, now - STATE_MAX_BACKTRACK_HOURS))`, so a delayed schedule or a failed day never leaves gaps; already-delivered post keys are filtered out (no duplicate emails on overlapping windows). After a successful run the state is saved and the workflow commits it back (`Commit run state` step; `STATE_FILE=none` disables).
 3) Fetch (`feeds.fetch_recent_posts`): feeds are fetched concurrently (`FETCH_WORKERS`, default 8); all HTTP goes through `urllib` with a 20s timeout and gzip/deflate decompression (non-HTTP failures retry up to 3x); `feedparser` only ever parses pre-fetched bytes. Per feed, recovery (HTML `<link>` discovery, site URL probe, suffix candidates) is bounded by `max_candidates=8` URLs and a 120s deadline. Extract timestamps, HTML, text; skip stale/untimestamped items; build `FeedPost` with source metadata.
-4) Summarize (`translation.py`): OpenAI Chat prompt (≤200 target-language words; preserve math/LaTeX/URLs/Markdown/code; no subjective comments). Batch per feed; chunk long posts; retry on 429 (Retry-After aware) and on transient errors (5xx/timeout/connection, exponential backoff); content-filter responses split the chunk and retry; response-format support degrades json_schema → json_object → none.
+4) Summarize (`translation.py`): OpenAI Chat prompt (≤200 target-language words; preserve math/LaTeX/URLs/Markdown/code; no subjective comments). Batch per feed; chunk long posts (`TRANSLATION_CHUNK_CHARS=-1` sends an entire article in one request); retry on 429 (Retry-After aware) and on transient errors (5xx/timeout/connection, exponential backoff); content-filter responses split the chunk and retry; response-format support degrades json_schema → json_object → none.
 5) Render email (`construct_email.py`): feed HTML is sanitized with an `nh3` allowlist and post URLs are escaped; pinned sources (`"pinned": true` in the catalog) float to the top; quick overview + per-post detail blocks with anchors. Large digests split into multiple emails (`EMAIL_MAX_POSTS`/`EMAIL_MAX_BYTES`), each self-contained (own summary + full text) to stay under Gmail's ~102KB clipping limit.
 
 ## Math Rendering
@@ -35,7 +35,7 @@
 - Windows/limits: `WINDOW_HOURS`, `MAX_POST_NUM`, `MAX_POSTS_PER_FEED`
 - Fetching: `FETCH_WORKERS`
 - Run state: `STATE_FILE` (`none` disables), `STATE_MAX_BACKTRACK_HOURS`
-- Output: `TARGET_LANGUAGE`, `TRANSLATION_MAX_CHARS`, `EMAIL_SUBJECT_PREFIX`, `EMAIL_MAX_POSTS`, `EMAIL_MAX_BYTES`, `EMAIL_HTML_DIR`, `FAILURE_LOG`
+- Output: `TARGET_LANGUAGE`, `TRANSLATION_MAX_CHARS`, `TRANSLATION_CHUNK_CHARS`, `EMAIL_SUBJECT_PREFIX`, `EMAIL_MAX_POSTS`, `EMAIL_MAX_BYTES`, `EMAIL_HTML_DIR`, `FAILURE_LOG`
 - OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` (optional)
 - SMTP: `SMTP_SERVER`, `SMTP_PORT`, `SENDER`, `SENDER_PASSWORD`, `RECEIVER`
 

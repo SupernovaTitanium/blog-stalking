@@ -306,6 +306,12 @@ def _register_arguments() -> argparse.Namespace:
         help="Cap characters per article sent for full translation; -1 translates everything.",
     )
     add_argument(
+        "--translation_chunk_chars",
+        type=int,
+        default=-1,
+        help="Chunk size for translation requests; -1 sends the whole article in one request.",
+    )
+    add_argument(
         "--email_max_posts",
         type=int,
         default=15,
@@ -551,6 +557,7 @@ def _translate_posts(posts: list[FeedPost], args: argparse.Namespace, use_nvidia
         nvidia_api_url=args.nvidia_api_url,
         nvidia_base_url=args.nvidia_base_url,
         nvidia_rpm=args.nvidia_rpm,
+        chunk_chars=args.translation_chunk_chars,
     )
     summaries = translator.translate_batch_by_feed(
         [p.content_text for p in posts],
