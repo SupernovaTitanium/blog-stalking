@@ -9,6 +9,7 @@ from main import (
     _split_posts_for_email,
     _summary_fallback_from_translation,
     _summary_is_usable,
+    _truncate_for_translation,
     load_feed_configs_from_file,
 )
 
@@ -94,6 +95,27 @@ class SplitPostsForEmailTest(unittest.TestCase):
 
     def test_empty_posts_yield_single_batch_for_send_empty(self) -> None:
         self.assertEqual(_split_posts_for_email([], max_posts=5, max_bytes=1000), [[]])
+
+
+class TranslationTruncationTest(unittest.TestCase):
+    def test_short_text_passes_through(self) -> None:
+        self.assertEqual(_truncate_for_translation("短文", 4000), "短文")
+
+    def test_cap_zero_or_negative_disables_cap(self) -> None:
+        long_text = "x" * 9000
+        self.assertEqual(_truncate_for_translation(long_text, 0), long_text)
+        self.assertEqual(_truncate_for_translation(long_text, -1), long_text)
+
+    def test_long_text_is_cut_at_sentence_boundary(self) -> None:
+        sentences = ["這是第 %d 句完整的句子。" % i for i in range(400)]
+        text = "".join(sentences)
+
+        truncated = _truncate_for_translation(text, 4000)
+
+        self.assertLessEqual(len(truncated), 4000)
+        # never a dangling fragment: always ends with a full sentence
+        self.assertTrue(truncated.endswith("。"))
+        self.assertNotEqual(truncated, text)
 
 
 class SummaryFallbackTest(unittest.TestCase):

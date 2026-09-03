@@ -136,6 +136,22 @@ def _split_posts_for_email(
     return batches
 
 
+def _truncate_for_translation(text: str, cap: int) -> str:
+    """Cap how much of an article is sent for full-text translation.
+
+    Cuts at the last paragraph/sentence boundary near the cap so the model
+    isn't handed a dangling fragment. The email still shows the complete
+    original text; only the translation is partial.
+    """
+    if cap <= 0 or len(text) <= cap:
+        return text
+    head = text[:cap]
+    cut = max(head.rfind("\n\n"), head.rfind(". "), head.rfind("。"))
+    if cut >= cap - 400:
+        head = head[: cut + 1]
+    return head.rstrip()
+
+
 def _summary_fallback_from_translation(
     translation: str | None, target_language: str
 ) -> str | None:
@@ -282,6 +298,12 @@ def _register_arguments() -> argparse.Namespace:
         type=str,
         default="Chinese (Traditional)",
         help="Language for the translated summary.",
+    )
+    add_argument(
+        "--translation_max_chars",
+        type=int,
+        default=-1,
+        help="Cap characters per article sent for full translation; -1 translates everything.",
     )
     add_argument(
         "--email_max_posts",
@@ -534,7 +556,13 @@ def _translate_posts(posts: list[FeedPost], args: argparse.Namespace, use_nvidia
         [p.content_text for p in posts],
         [p.feed_url for p in posts],
     )
-    translations = translator.translate_batch([p.content_text for p in posts])
+    translation_texts = [p.content_text for p in posts]
+    if args.translation_max_chars > 0:
+        translation_texts = [
+            _truncate_for_translation(p.content_text, args.translation_max_chars)
+            for p in posts
+        ]
+    translations = translator.translate_batch(translation_texts)
     for post, summary in zip(posts, summaries, strict=False):
         post.summary = summary
     for post, translation in zip(posts, translations, strict=False):
