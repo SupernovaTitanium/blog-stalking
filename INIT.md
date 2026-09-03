@@ -8,7 +8,8 @@
 ## One-time setup
 1) Install deps locally (includes the dev/test group): `uv sync`
 2) Export env vars (or set repo secrets/vars):
-   - Required secrets: `NVIDIA_API_KEY` (or `OPENAI_API_KEY` + `OPENAI_MODEL`), `SMTP_SERVER`, `SMTP_PORT`, `SENDER`, `SENDER_PASSWORD`, `RECEIVER`
+   - Required secrets: `OPENAI_API_KEY` + `OPENAI_MODEL`, `SMTP_SERVER`, `SMTP_PORT`, `SENDER`, `SENDER_PASSWORD`, `RECEIVER`
+   - Optional var: `OPENAI_API_BASE` for any OpenAI-compatible endpoint (Z.ai, Gemini, DeepSeek, ...). NVIDIA is still supported by `main.py` — re-add the `NVIDIA_*` env lines to the workflow to use it.
    - Common vars: `FEED_LIST` (default `feeds/blogs.json`), `WINDOW_HOURS` (default `24`), `MAX_POSTS_PER_FEED` (workflow default `-1`), `TARGET_LANGUAGE` (default `Chinese (Traditional)`), `FAILURE_LOG` (optional path), `EMAIL_MAX_POSTS`/`EMAIL_MAX_BYTES` (digest splitting)
 3) Run locally: `uv run main.py --debug`
 
