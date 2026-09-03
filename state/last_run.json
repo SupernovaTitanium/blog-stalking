@@ -1,5 +1,5 @@
 {
-  "window_end": "2026-09-03T17:14:00.927879+00:00",
+  "window_end": "2026-09-03T23:50:58.179314+00:00",
   "seen_posts": [
     "https://openai.com/index/atv-big-air-tour",
     "https://huggingface.co/blog/ibm-research/real-time-intelligence",
@@ -42,6 +42,20 @@
     "https://mathstodon.xyz/@tao/117207855800042681",
     "https://mathstodon.xyz/@tao/117207856734787448",
     "https://research.google/blog/a-connectomics-milestone-mapping-the-complete-male-fruit-fly-brain",
-    "https://blog.pragmaticengineer.com/the-pulse-meta-wanted-to-reduce-teams-by-60-because-of-ai"
+    "https://blog.pragmaticengineer.com/the-pulse-meta-wanted-to-reduce-teams-by-60-because-of-ai",
+    "https://openai.com/index/safety-overview-gpt-6-astra",
+    "https://openai.com/index/legora-financial-statement-review-with-astra",
+    "https://openai.com/index/playco-game-prototyping-with-astra",
+    "https://openai.com/index/daybreak-for-frontline-defenders",
+    "https://johndcook.com/blog/2026/09/03/new-rsa-number-factored",
+    "https://research.google/blog/transfer-learning-for-genomic-prediction-in-underrepresented-populations",
+    "https://mathstodon.xyz/@tao/117208617602946453",
+    "https://mathstodon.xyz/@tao/117208618508728654",
+    "https://mathstodon.xyz/@tao/117208619314517025",
+    "https://statmodeling.stat.columbia.edu/2026/09/03/update-on-i-dont-understand-this-paper-claiming-election-fraud-in-2024-in-pennsylvania",
+    "https://simonwillison.net/2026/Sep/3/gpt6-astra",
+    "https://blog.cloudflare.com/vulnerability-discovery-remediation",
+    "https://xianblog.wordpress.com/2026/09/04/dawn-on-wear-jatp",
+    "https://johndcook.com/blog/2026/09/03/hugging-face-easter-egg"
   ]
 }
