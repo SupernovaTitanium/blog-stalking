@@ -76,13 +76,21 @@ _TITLE_MAX_LEN = 140
 _MIN_CONTENT_CHARS = 200
 _MAX_ARTICLE_FETCHES_PER_FEED = 6
 
-# Class/id fragments that mark boilerplate inside a fetched article page.
-_PAGE_JUNK_PATTERN = re.compile(
-    r"comment|sidebar|widget|nav|footer|related|share|social|subscribe|"
-    r"newsletter|respond|breadcrumb|pagination|promo|advert|byline|"
-    r"entry-tags|post-tags|taglist|entry-meta|post-meta|asset-meta|"
-    r"postmetadata|entry-footer|post-footer",
-    re.IGNORECASE,
+# Class/id tokens that mark boilerplate inside a fetched article page.
+# Matched per whitespace-separated token only: substring matching deleted
+# whole articles whose content wrapper happened to say "comment-enabled".
+_PAGE_JUNK_TOKENS = frozenset(
+    (
+        "comment", "comments", "comment-form", "comment-list", "comment-reply",
+        "comment-respond", "respond", "sidebar", "widget", "widgets",
+        "widget-area", "nav", "navigation", "navbar", "topnav", "footer",
+        "related", "related-posts", "share", "sharing", "social",
+        "subscribe", "subscription", "newsletter", "breadcrumb",
+        "breadcrumbs", "pagination", "pager", "promo", "advert",
+        "advertisement", "ads", "byline", "entry-tags", "post-tags",
+        "taglist", "tags", "entry-meta", "post-meta", "asset-meta",
+        "postmetadata", "entry-footer", "post-footer", "meta",
+    )
 )
 
 # Plain-text boilerplate prefixes (WordPress/Movable-Type footers that ship
@@ -107,18 +115,30 @@ def _strip_page_junk(container) -> None:
     def _remove(tags) -> None:
         for tag in tags:
             # An ancestor may already have been decomposed, nulling attrs.
-            if getattr(tag, "attrs", None) is not None:
-                tag.decompose()
+            if getattr(tag, "attrs", None) is None:
+                continue
+            # Themes abuse <aside>/<header>/<footer> as article wrappers
+            # (e.g. ML@CMU wraps posts in <aside class="post-N">); only
+            # remove them when they don't hold the page heading.
+            if tag.name in ("aside", "header", "footer") and tag.find("h1") is not None:
+                continue
+            tag.decompose()
 
     _remove(
-        container(["script", "style", "nav", "header", "footer", "aside", "form", "noscript"])
+        container(["script", "style", "nav", "aside", "header", "footer", "form", "noscript"])
     )
     doomed = []
     for tag in container.find_all(True):
         if getattr(tag, "attrs", None) is None:
             continue
+        if tag.find("h1") is not None:
+            # A container holding the page heading is the article itself,
+            # however its classes look.
+            continue
         identifiers = " ".join(tag.get("class") or []) + " " + (tag.get("id") or "")
-        if identifiers and _PAGE_JUNK_PATTERN.search(identifiers):
+        if identifiers and any(
+            token.lower() in _PAGE_JUNK_TOKENS for token in identifiers.split()
+        ):
             doomed.append(tag)
     _remove(doomed)
 
@@ -572,7 +592,6 @@ def fetch_recent_posts(
     posts: List[FeedPost] = []
     feed_title = feed.feed.get("title") or feed.feed.get("link") or feed_url
     fetched_at = datetime.now(timezone.utc)
-    article_fetches = 0
     for index, entry in enumerate(feed.entries):
         published = _extract_entry_datetime(entry)
         timestamp_known = published is not None
@@ -602,15 +621,6 @@ def fetch_recent_posts(
         raw_html = _extract_entry_html(entry)
         soup = BeautifulSoup(raw_html or "", "html.parser")
         text = _trim_boilerplate_lines(_normalize_text_blocks(soup.get_text("\n")))
-        if (
-            len(text) < _MIN_CONTENT_CHARS
-            and link.startswith("http")
-            and article_fetches < _MAX_ARTICLE_FETCHES_PER_FEED
-        ):
-            article_fetches += 1
-            article = _fetch_article_content(link, current_text=text, feed_url=feed_url)
-            if article is not None:
-                raw_html, text = article
         title = (getattr(entry, "title", "") or text or "New post").strip()
         if len(title) > _TITLE_MAX_LEN:
             title = title[:_TITLE_MAX_LEN].rstrip() + "…"
@@ -647,5 +657,23 @@ def fetch_recent_posts(
         dated = dated[-limit:]
         undated = undated[: max(0, limit - len(dated))]
     posts = dated + undated
+
+    # Enrich short-content posts from their article pages only AFTER the
+    # per-feed limit picked the keepers, so the fetch budget is spent on
+    # posts that actually ship in the digest.
+    article_fetches = 0
+    for post in posts:
+        if (
+            len(post.content_text) < _MIN_CONTENT_CHARS
+            and post.url.startswith("http")
+            and article_fetches < _MAX_ARTICLE_FETCHES_PER_FEED
+        ):
+            article_fetches += 1
+            article = _fetch_article_content(
+                post.url, current_text=post.content_text, feed_url=feed_url
+            )
+            if article is not None:
+                post.content_html, post.content_text = article
+
     posts.sort(key=lambda p: p.published)
     return posts
