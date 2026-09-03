@@ -70,6 +70,12 @@ _FEED_SUFFIXES = (
 # text becomes the title; cap it so digest headings stay readable.
 _TITLE_MAX_LEN = 140
 
+# Excerpt-only feeds (e.g. Google Research) ship just a category label in
+# their entries. Below this many characters of body text we fetch the
+# article page itself and extract the main content.
+_MIN_CONTENT_CHARS = 200
+_MAX_ARTICLE_FETCHES_PER_FEED = 6
+
 # Feeds occasionally omit entry timestamps. Entries near the top of such
 # feeds are usually recent, so include the first few as "now" and let the
 # run-state seen-list suppress repeats; undated entries never evict dated
@@ -336,6 +342,28 @@ def _coerce_html_value(candidate: Any) -> str:
     return value or ""
 
 
+def _fetch_article_content(url: str) -> tuple[str, str] | None:
+    """Fetch an article page and extract (html, text) of its main content.
+
+    Returns None when the page is unreachable or yields too little text;
+    callers then keep whatever the feed itself provided.
+    """
+    try:
+        payload = _fetch_feed_bytes(url)
+    except Exception:
+        return None
+    soup = BeautifulSoup(payload.decode("utf-8", errors="replace"), "html.parser")
+    for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form", "noscript"]):
+        tag.decompose()
+    for node in (soup.find("article"), soup.find("main"), soup.body):
+        if node is None:
+            continue
+        text = node.get_text("\n").strip()
+        if len(text) >= _MIN_CONTENT_CHARS:
+            return node.decode(), text
+    return None
+
+
 def _extract_entry_html(entry: Mapping[str, Any]) -> str:
     html_candidates: list[str] = []
     content = entry.get("content")
@@ -384,6 +412,7 @@ def fetch_recent_posts(
     posts: List[FeedPost] = []
     feed_title = feed.feed.get("title") or feed.feed.get("link") or feed_url
     fetched_at = datetime.now(timezone.utc)
+    article_fetches = 0
     for index, entry in enumerate(feed.entries):
         published = _extract_entry_datetime(entry)
         timestamp_known = published is not None
@@ -413,6 +442,15 @@ def fetch_recent_posts(
         raw_html = _extract_entry_html(entry)
         soup = BeautifulSoup(raw_html or "", "html.parser")
         text = soup.get_text("\n").strip()
+        if (
+            len(text) < _MIN_CONTENT_CHARS
+            and link.startswith("http")
+            and article_fetches < _MAX_ARTICLE_FETCHES_PER_FEED
+        ):
+            article_fetches += 1
+            article = _fetch_article_content(link)
+            if article is not None:
+                raw_html, text = article
         title = (getattr(entry, "title", "") or text or "New post").strip()
         if len(title) > _TITLE_MAX_LEN:
             title = title[:_TITLE_MAX_LEN].rstrip() + "…"
