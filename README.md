@@ -68,6 +68,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | `FETCH_WORKERS` | `8` | Number of feeds fetched concurrently. |
 | `STATE_FILE` | `state/last_run.json` | Run-state file (window end + delivered post IDs) committed back by the workflow so delayed or failed runs never leave gaps; set `none` to disable. |
 | `STATE_MAX_BACKTRACK_HOURS` | `72` | Cap on how far a resumed window may reach back after a long outage. |
+| `OPENAI_MAX_TOKENS` | `16384` | Output cap per LLM request (`0` = unset). Aggregators like OpenRouter price against the model max when unset, which can trigger a 402 on limited-credit keys. |
 | `NVIDIA_MODEL` | `z-ai/glm-5.2` | NVIDIA chat model used when `NVIDIA_API_KEY` is set. |
 | `NVIDIA_API_URL` | `https://integrate.api.nvidia.com/v1/chat/completions` | NVIDIA chat completions endpoint. |
 | `NVIDIA_RPM` | `4` | Maximum NVIDIA chat completion requests per minute. |

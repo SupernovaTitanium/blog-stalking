@@ -296,6 +296,50 @@ class FeedTranslationJsonSchemaTest(unittest.TestCase):
         sleep_mock.assert_called_once_with(1.0)
 
 
+class OpenAIMaxTokensTest(unittest.TestCase):
+    def _build(self, openai_max_tokens):
+        return OpenAITranslator(
+            api_key="test-key",
+            model="glm-5.3",
+            target_language="Chinese (Traditional)",
+            openai_max_tokens=openai_max_tokens,
+        )
+
+    def test_max_tokens_sent_when_positive(self) -> None:
+        translator = self._build(16384)
+        mock_response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content='{"translation":"翻譯"}'),
+                )
+            ]
+        )
+        create_mock = MagicMock(return_value=mock_response)
+        translator.client.chat.completions.create = create_mock
+
+        translator.translate_batch(["text"])
+
+        self.assertEqual(create_mock.call_args.kwargs["max_tokens"], 16384)
+
+    def test_max_tokens_omitted_when_unset(self) -> None:
+        translator = self._build(None)
+        mock_response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content='{"translation":"翻譯"}'),
+                )
+            ]
+        )
+        create_mock = MagicMock(return_value=mock_response)
+        translator.client.chat.completions.create = create_mock
+
+        translator.translate_batch(["text"])
+
+        self.assertNotIn("max_tokens", create_mock.call_args.kwargs)
+
+
 class TranslationChunkingTest(unittest.TestCase):
     LONG_TEXT = ("Paragraph with a few sentences. " * 8 + "\n\n") * 40  # ~13k chars
 

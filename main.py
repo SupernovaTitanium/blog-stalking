@@ -341,6 +341,14 @@ def _register_arguments() -> argparse.Namespace:
         type=str,
         help="OpenAI chat model name (e.g. gpt-4o-mini).",
     )
+    add_argument(
+        "--openai_max_tokens",
+        type=int,
+        default=16384,
+        help="Output cap for LLM requests (0 = unset). Aggregators like "
+        "OpenRouter price against the model max when unset, which can "
+        "trigger 402 on limited-credit keys.",
+    )
     add_argument("--nvidia_api_key", type=str, help="NVIDIA API key.")
     add_argument(
         "--nvidia_api_url",
@@ -558,6 +566,7 @@ def _translate_posts(posts: list[FeedPost], args: argparse.Namespace, use_nvidia
         nvidia_base_url=args.nvidia_base_url,
         nvidia_rpm=args.nvidia_rpm,
         chunk_chars=args.translation_chunk_chars,
+        openai_max_tokens=args.openai_max_tokens if args.openai_max_tokens > 0 else None,
     )
     summaries = translator.translate_batch_by_feed(
         [p.content_text for p in posts],

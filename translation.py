@@ -73,6 +73,7 @@ class OpenAITranslator:
         max_chars: int = 4000,
         max_total_chars: int = 12000,
         chunk_chars: int = 0,
+        openai_max_tokens: int | None = None,
         temperature: float | None = None,
         provider: str = "openai",
         nvidia_api_url: str | None = None,
@@ -113,6 +114,12 @@ class OpenAITranslator:
         # Translation chunking override: 0 = follow max_chars (legacy),
         # >0 = chunk at this size, <0 = never chunk (one request per article).
         self.chunk_chars = int(chunk_chars)
+        # Output cap for the OpenAI path. Aggregators like OpenRouter price
+        # requests against the model's maximum when max_tokens is unset and
+        # reject (402) when that exceeds the key's credit budget.
+        self.openai_max_tokens = (
+            int(openai_max_tokens) if openai_max_tokens else None
+        )
         self.temperature = temperature
         self._max_filter_depth = 3
         self._rate_limit_exhausted = False
@@ -164,6 +171,8 @@ class OpenAITranslator:
             kwargs["response_format"] = response_format
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
+        if self.openai_max_tokens:
+            kwargs["max_tokens"] = self.openai_max_tokens
 
         def request_once() -> tuple[str, str | None]:
             response = self.client.chat.completions.create(**kwargs)
