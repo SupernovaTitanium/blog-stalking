@@ -89,6 +89,8 @@ class OpenAITranslator:
         self.provider = (provider or "openai").lower()
         if self.provider not in ("openai", "nvidia"):
             raise ValueError(f"Unsupported AI provider: {provider}")
+        base_url = (base_url or "").strip() or None
+        api_key = (api_key or "").strip()
         if self.provider == "openai":
             self.client = OpenAI(api_key=api_key, base_url=base_url)
         else:
