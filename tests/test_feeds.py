@@ -16,6 +16,98 @@ from feedparser import FeedParserDict
 from unittest.mock import patch
 
 
+class JekyllListingTest(unittest.TestCase):
+    # Trimmed from the real https://www.minregret.com/blog/ listing page;
+    # the site publishes no feed, so posts are rebuilt from these anchors.
+    LISTING_HTML = (
+        "<html><head><title>Blog - Minimizing Regret</title></head><body>"
+        '<ul class="post-list">'
+        '<li><a href="/2026/09/15/two-decades-of-online-convex-optimization.html">'
+        "Two decades of online convex optimization: a personal recollection</a></li>"
+        '<li><a href="/2026/06/27/orthogonality.html">'
+        "The Statistical Orthogonality Thesis</a></li>"
+        '<li><a href="/2025/05/07/agentic-alignment.html">'
+        "AI Alignment via Incentives and Correction</a></li>"
+        '<li><a href="/2024/06/04/spectral_transformers.html">'
+        "Spectral Transformers</a></li>"
+        '<li><a href="/2020/10/06/blackwell-approachability-meets-online-convex-optimization.html">'
+        "Blackwell approachability meets Online Conve Optimization</a></li>"
+        "</ul>"
+        '<footer><a href="/2026/06/27/orthogonality.html">duplicate sidebar link</a></footer>'
+        "</body></html>"
+    ).encode("utf-8")
+    ARTICLE_HTML = (
+        "<html><body><main><p>" + "Full article body text. " * 30 + "</p></main></body></html>"
+    ).encode("utf-8")
+
+    def _fetch(self, cutoff: datetime, **kwargs):
+        with patch(
+            "feeds._fetch_feed_bytes",
+            side_effect=lambda url, *a, **kw: self.LISTING_HTML
+            if url == "https://www.minregret.com/blog/"
+            else self.ARTICLE_HTML,
+        ):
+            return fetch_recent_posts(
+                "https://www.minregret.com/blog/",
+                parser="jekyll_listing",
+                cutoff=cutoff,
+                **kwargs,
+            )
+
+    def test_listing_links_become_dated_posts(self) -> None:
+        posts = self._fetch(datetime(2020, 1, 1, tzinfo=timezone.utc))
+
+        self.assertEqual(len(posts), 5)  # duplicate anchor collapsed
+        self.assertEqual(
+            posts[-1].url,
+            "https://www.minregret.com/2026/09/15/two-decades-of-online-convex-optimization.html",
+        )
+        self.assertEqual(
+            posts[-1].title,
+            "Two decades of online convex optimization: a personal recollection",
+        )
+        self.assertEqual(
+            posts[-1].published, datetime(2026, 9, 15, tzinfo=timezone.utc)
+        )
+        self.assertTrue(all(p.timestamp_known for p in posts))
+        # Titles alone are under the short-content bar, so article pages are
+        # fetched to fill in the body.
+        self.assertIn("Full article body text.", posts[-1].content_text)
+
+    def test_window_excludes_older_posts(self) -> None:
+        posts = self._fetch(datetime(2026, 5, 1, tzinfo=timezone.utc))
+        self.assertEqual([p.url.rsplit("/", 1)[-1] for p in posts], ["orthogonality.html", "two-decades-of-online-convex-optimization.html"])
+
+    def test_non_html_payload_raises(self) -> None:
+        with patch(
+            "feeds._fetch_feed_bytes",
+            return_value=b'<rss version="2.0"><channel><title>T</title></channel></rss>',
+        ):
+            with self.assertRaisesRegex(RuntimeError, "not an HTML page"):
+                fetch_recent_posts(
+                    "https://www.minregret.com/blog/",
+                    parser="jekyll_listing",
+                )
+
+    def test_listing_without_dated_links_raises(self) -> None:
+        with patch(
+            "feeds._fetch_feed_bytes",
+            return_value=b"<html><body><a href='/about'>About</a></body></html>",
+        ):
+            with self.assertRaisesRegex(RuntimeError, "no dated post links"):
+                fetch_recent_posts(
+                    "https://www.minregret.com/blog/",
+                    parser="jekyll_listing",
+                )
+
+    def test_unknown_parser_rejected(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "Unknown parser"):
+            fetch_recent_posts(
+                "https://www.minregret.com/blog/",
+                parser="scrapydoo",
+            )
+
+
 class FetchRecentPostsTitleTest(unittest.TestCase):
     def _feed_with_title(self, title: str) -> bytes:
         escaped = title.replace("&", "&amp;")

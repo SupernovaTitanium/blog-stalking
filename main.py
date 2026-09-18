@@ -60,6 +60,7 @@ class FeedConfig:
     accent_color: Optional[str] = None
     tags: Optional[list[str]] = None
     pinned: bool = False
+    parser: Optional[str] = None
 
 
 _TRACKING_QUERY_PARAMS = ("utm_", "ref", "fbclid", "gclid")
@@ -223,6 +224,7 @@ def load_feed_configs_from_file(path: str) -> list[FeedConfig]:
                     accent_color=(entry.get("accent_color") or "").strip() or None,
                     tags=tags or None,
                     pinned=bool(entry.get("pinned")),
+                    parser=(entry.get("parser") or "").strip() or None,
                 )
             )
     return configs
@@ -490,6 +492,7 @@ def _fetch_all_posts(
                 window_hours,
                 per_feed_limit,
                 site_url=config.site,
+                parser=config.parser,
                 cutoff=cutoff,
             )
             return config, fetched, None

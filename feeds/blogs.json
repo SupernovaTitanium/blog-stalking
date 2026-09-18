@@ -1016,5 +1016,19 @@
       "reverse engineering",
       "history"
     ]
+  },
+  {
+    "name": "Minimizing Regret",
+    "site": "https://www.minregret.com",
+    "feed": "https://www.minregret.com/blog/",
+    "parser": "jekyll_listing",
+    "owner": "Elad Hazan",
+    "category": "Individual researcher",
+    "description": "Machine learning, optimization, and control essays from Elad Hazan's group at Princeton (site publishes no feed; parsed from the blog listing page).",
+    "tags": [
+      "machine learning",
+      "optimization",
+      "control theory"
+    ]
   }
 ]

@@ -10,7 +10,8 @@ import zlib
 from urllib.parse import urljoin, urlparse, urlunparse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from html import escape as html_escape
+from html import escape as html_escape, unescape as html_unescape
+from types import SimpleNamespace
 from typing import Any, List, Mapping, Optional
 
 import feedparser
@@ -444,6 +445,86 @@ def _fetch_payload_with_www_fallback(url: str, seen: set[str]) -> tuple[bytes, s
         raise
 
 
+class _ListingEntry(dict):
+    """Attribute access shim so listing entries quack like feedparser entries."""
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+
+# Jekyll's default permalink encodes the publish date in the URL:
+# /2026/09/15/two-decades-of-online-convex-optimization.html
+_DATED_POST_PATH = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/([^/?#]+)\.html?")
+
+
+def _parse_jekyll_listing(listing_url: str):
+    """Build a feed-like object from a Jekyll blog-index HTML page.
+
+    For sites that publish no feed at all (e.g. minregret.com), the blog
+    listing page still exposes every post as <a href="/YYYY/MM/DD/slug.html">;
+    the date travels in the URL and the anchor text is the post title.
+    """
+    payload = _fetch_feed_bytes(listing_url)
+    html_text = payload.decode("utf-8", errors="replace")
+    if not _looks_like_html(html_text):
+        raise RuntimeError(f"Failed to parse listing {listing_url}: not an HTML page")
+
+    soup = BeautifulSoup(html_text, "html.parser")
+    page_title = soup.title.get_text(strip=True) if soup.title else listing_url
+    entries: list[_ListingEntry] = []
+    seen_links: set[str] = set()
+    for anchor in soup.find_all("a", href=True):
+        link = urljoin(listing_url, anchor["href"])
+        match = _DATED_POST_PATH.fullmatch(urlparse(link).path)
+        if match is None:
+            continue
+        title = html_unescape(anchor.get_text(" ", strip=True))
+        if not title or link in seen_links:
+            continue
+        seen_links.add(link)
+        year, month, day = (int(part) for part in match.group(1, 2, 3))
+        entries.append(
+            _ListingEntry(
+                id=link,
+                link=link,
+                title=title,
+                published_parsed=time.strptime(f"{year}-{month}-{day}", "%Y-%m-%d"),
+            )
+        )
+    if not entries:
+        raise RuntimeError(
+            f"Failed to parse listing {listing_url}: no dated post links found"
+        )
+    return SimpleNamespace(
+        bozo=False,
+        feed={"title": page_title, "link": listing_url},
+        entries=entries,
+    )
+
+
+def parse_feed(
+    feed_url: str,
+    *,
+    site_url: str | None = None,
+    parser: str | None = None,
+    max_candidates: int = 8,
+    deadline: float | None = None,
+):
+    if parser == "jekyll_listing":
+        return _parse_jekyll_listing(feed_url)
+    if parser is not None:
+        raise RuntimeError(f"Unknown parser {parser!r} for {feed_url}")
+    return _parse_feed(
+        feed_url,
+        site_url=site_url,
+        max_candidates=max_candidates,
+        deadline=deadline,
+    )
+
+
 def _parse_feed(
     feed_url: str,
     *,
@@ -567,15 +648,17 @@ def fetch_recent_posts(
     limit: Optional[int] = None,
     site_url: str | None = None,
     *,
+    parser: Optional[str] = None,
     cutoff: Optional[datetime] = None,
     max_candidates: int = 8,
     fetch_budget_seconds: float = 120.0,
 ) -> List[FeedPost]:
     logger.debug(f"Loading feed from {feed_url}")
     deadline = time.monotonic() + fetch_budget_seconds
-    feed = _parse_feed(
+    feed = parse_feed(
         feed_url,
         site_url=site_url,
+        parser=parser,
         max_candidates=max_candidates,
         deadline=deadline,
     )

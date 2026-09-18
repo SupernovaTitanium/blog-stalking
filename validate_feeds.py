@@ -6,7 +6,7 @@ from typing import Iterable
 
 from loguru import logger
 
-from feeds import _parse_feed
+from feeds import parse_feed
 from main import FeedConfig, load_feed_configs_from_file
 
 
@@ -24,7 +24,7 @@ def iter_feed_configs(feed_list: str) -> Iterable[FeedConfig]:
 
 def validate_feed(config: FeedConfig) -> tuple[str, int, str]:
     try:
-        feed = _parse_feed(config.url, site_url=config.site)
+        feed = parse_feed(config.url, site_url=config.site, parser=config.parser)
     except Exception as exc:  # pragma: no cover - network dependent
         return ("error", 0, f"request failed: {exc}")
 
