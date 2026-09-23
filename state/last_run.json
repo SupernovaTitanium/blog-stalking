@@ -1,5 +1,5 @@
 {
-  "window_end": "2026-09-22T00:38:35.822956+00:00",
+  "window_end": "2026-09-23T00:08:22.018390+00:00",
   "seen_posts": [
     "https://openai.com/index/atv-big-air-tour",
     "https://huggingface.co/blog/ibm-research/real-time-intelligence",
@@ -654,6 +654,26 @@
     "https://simonwillison.net/2026/Sep/21/cloudflare-python-worker",
     "https://xianblog.wordpress.com/2026/09/22/prequential-posteriors-in-the-japanese-journal-of-statistics-and-data-science",
     "https://simonwillison.net/2026/Sep/21/jev",
-    "https://johndcook.com/blog/2026/09/21/haversine-law"
+    "https://johndcook.com/blog/2026/09/21/haversine-law",
+    "https://gilkalai.wordpress.com/2026/09/22/be-a-grothendieck-on-ai-and-mathematics",
+    "https://schneier.com/blog/archives/2026/09/gpt-6-astra-breaks-an-old-enigma-message.html",
+    "https://openai.com/index/parallel-cuts-time-and-cost-with-astra",
+    "https://blog.cloudflare.com/worker-previews",
+    "https://statmodeling.stat.columbia.edu/2026/09/22/phonics-is-a-fad-but-its-also-good-so-we-should-do-it-anyway-even-though-it-will-probably-disappoint-people",
+    "https://interconnects.ai/p/debating-rsi-the-us-china-gap-and",
+    "https://sebastianraschka.com/blog/2026/mimo-v2-6-pro-architecture-training-notes.html",
+    "https://johndcook.com/blog/2026/09/22/nathaniel-bowditch",
+    "https://blog.cloudflare.com/vary-support",
+    "https://terrytao.wordpress.com/2026/09/22/open-problems-open-mathematics",
+    "https://simonwillison.net/2026/Sep/22/llm-typesafe",
+    "https://simonwillison.net/2026/Sep/22/llm-anthropic",
+    "https://openai.com/index/introducing-gpt-6-sol-and-luna",
+    "https://simonwillison.net/2026/Sep/22/therealcornpop",
+    "https://simonwillison.net/2026/Sep/22/llm",
+    "https://statmodeling.stat.columbia.edu/2026/09/22/survey-statistics-fat-bear-week-2026",
+    "https://openai.com/index/better-prompt-caching-for-gpt-6",
+    "https://xianblog.wordpress.com/2026/09/23/faster-hmc-by-learning",
+    "https://terrytao.wordpress.com/2026/09/22/why-i-agreed-to-join-agmai",
+    "https://simonwillison.net/2026/Sep/22/opus-and-sol-and-luna"
   ]
 }
