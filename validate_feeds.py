@@ -6,8 +6,7 @@ from typing import Iterable
 
 from loguru import logger
 
-from feeds import parse_feed
-from main import FeedConfig, load_feed_configs_from_file
+from feeds import FeedConfig, load_feed_configs_from_file, parse_feed
 
 
 def iter_feed_configs(feed_list: str) -> Iterable[FeedConfig]:
@@ -24,15 +23,13 @@ def iter_feed_configs(feed_list: str) -> Iterable[FeedConfig]:
 
 def validate_feed(config: FeedConfig) -> tuple[str, int, str]:
     try:
-        feed = parse_feed(config.url, site_url=config.site, parser=config.parser)
+        parsed = parse_feed(config.url, site_url=config.site, parser=config.parser)
     except Exception as exc:  # pragma: no cover - network dependent
         return ("error", 0, f"request failed: {exc}")
 
-    entries = len(getattr(feed, "entries", []) or [])
+    entries = len(parsed.entries)
     if entries == 0:
         return ("warn", entries, "no entries returned")
-    if feed.bozo:
-        return ("ok", entries, f"parse warning tolerated: {feed.bozo_exception}")
     return ("ok", entries, "")
 
 

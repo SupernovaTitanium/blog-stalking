@@ -1,10 +1,10 @@
 # Blog Pusher — Technical Notes
 
 ## High-level Flow
-1) Entry (`main.py`): load feed configs (`feeds/blogs.json` + optional `FEED_URL`/`BLOG_FEED_URL`), de-duplicate, respect `WINDOW_HOURS`, `MAX_POST_NUM`, `MAX_POSTS_PER_FEED`.
+1) Entry (`main.py`): load feed configs (`feeds/blogs.json` + optional `FEED_URL`), de-duplicate, respect `WINDOW_HOURS`, `MAX_POST_NUM`, `MAX_POSTS_PER_FEED`.
 2) Run state (`run_state.py`): load `STATE_FILE` (default `state/last_run.json`); the fetch cutoff is `min(now - window, max(last window_end - 10min, now - STATE_MAX_BACKTRACK_HOURS))`, so a delayed schedule or a failed day never leaves gaps; already-delivered post keys are filtered out (no duplicate emails on overlapping windows). After a successful run the state is saved and the workflow commits it back (`Commit run state` step; `STATE_FILE=none` disables).
 3) Fetch (`feeds.fetch_recent_posts`): feeds are fetched concurrently (`FETCH_WORKERS`, default 8); all HTTP goes through `urllib` with a 20s timeout and gzip/deflate decompression (non-HTTP failures retry up to 3x); `feedparser` only ever parses pre-fetched bytes. Per feed, recovery (HTML `<link>` discovery, site URL probe, suffix candidates) is bounded by `max_candidates=8` URLs and a 120s deadline. Extract timestamps, HTML, text; skip stale/untimestamped items; build `FeedPost` with source metadata.
-4) Summarize (`translation.py`): OpenAI Chat prompt (≤200 target-language words; preserve math/LaTeX/URLs/Markdown/code; no subjective comments). Batch per feed; chunk long posts (`TRANSLATION_CHUNK_CHARS=-1` sends an entire article in one request); retry on 429 (Retry-After aware) and on transient errors (5xx/timeout/connection, exponential backoff); content-filter responses split the chunk and retry; response-format support degrades json_schema → json_object → none.
+4) Digest (`translation.py`): one OpenAI-compatible chat request per article returns structured JSON `{"summary", "translation"}` — a ≤200 target-language-word summary (preserve math/LaTeX/URLs/Markdown/code; no subjective comments) plus the full translation. Requests run concurrently (`TRANSLATION_WORKERS`, default 4); articles are split only when `TRANSLATION_CHUNK_CHARS` is positive (default `-1` = whole article per request; the summary comes from the first chunk). Retry on 429 (Retry-After aware) and on transient errors (5xx/timeout/connection, exponential backoff); content-filter responses split the chunk and retry; response-format support degrades json_schema → json_object → none; an exhausted rate limit opens a run-wide skip circuit.
 5) Render email (`construct_email.py`): feed HTML is sanitized with an `nh3` allowlist and post URLs are escaped; pinned sources (`"pinned": true` in the catalog) float to the top; quick overview + per-post detail blocks with anchors. Large digests split into multiple emails (`EMAIL_MAX_POSTS`/`EMAIL_MAX_BYTES`), each self-contained (own summary + full text) to stay under Gmail's ~102KB clipping limit.
 
 ## Math Rendering
@@ -23,20 +23,20 @@
 ## Key Files
 - `main.py`: CLI/env config, feed loading, concurrent fetching, URL-normalized dedup, digest email batching, error logging (`--failure_log`), orchestration (structured into testable functions).
 - `run_state.py`: run-state persistence (window end + seen post keys, capped at 1000) and cutoff computation.
-- `feeds.py`: RSS/Atom parsing, datetime extraction, HTML/text extraction, per-feed limiting, `FeedPost` dataclass.
-- `translation.py`: OpenAI client wrapper; Chinese summary prompt; chunking and content-filter handling.
+- `feeds.py`: catalog loading (`FeedConfig`), RSS/Atom parsing (via the normalized `ParsedFeed`/`Entry` model), HTML feed discovery, `jekyll_listing` parser for feedless Jekyll sites, datetime/text extraction, article-page enrichment, per-feed limiting, `FeedPost` dataclass.
+- `translation.py`: OpenAI-compatible client wrapper; one structured summary+translation request per article; concurrency, chunking, and content-filter handling.
 - `construct_email.py`: HTML/CSS templates, `nh3` sanitization of feed HTML, pinned-first ordering, anchors (`#overview`, per-post ids), inline “回到摘要” link beside titles, no summary truncation, hardened SMTP send.
 - `feeds/blogs.json`: primary feed catalog (includes Terence Tao Mastodon + blog); `feeds/test-blogs.json`: small debug set.
 - `INIT.md`: quick-start; `OPEN_SOURCE.md`: open-source readiness.
 - Workflows: `.github/workflows/main.yml` (nightly/manual), `.github/workflows/test.yml` (debug feeds, log artifacts).
 
 ## Configuration (env/CLI)
-- Feeds: `FEED_LIST`, `FEED_URL`, `BLOG_FEED_URL`
+- Feeds: `FEED_LIST`, `FEED_URL`
 - Windows/limits: `WINDOW_HOURS`, `MAX_POST_NUM`, `MAX_POSTS_PER_FEED`
 - Fetching: `FETCH_WORKERS`
 - Run state: `STATE_FILE` (`none` disables), `STATE_MAX_BACKTRACK_HOURS`
-- Output: `TARGET_LANGUAGE`, `TRANSLATION_MAX_CHARS`, `TRANSLATION_CHUNK_CHARS`, `EMAIL_SUBJECT_PREFIX`, `EMAIL_MAX_POSTS`, `EMAIL_MAX_BYTES`, `EMAIL_HTML_DIR`, `FAILURE_LOG`
-- OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` (optional), `OPENAI_MAX_TOKENS` (default 16384)
+- Output: `TARGET_LANGUAGE`, `TRANSLATION_MAX_CHARS`, `TRANSLATION_CHUNK_CHARS`, `TRANSLATION_WORKERS`, `EMAIL_SUBJECT_PREFIX`, `EMAIL_MAX_POSTS`, `EMAIL_MAX_BYTES`, `EMAIL_HTML_DIR`, `FAILURE_LOG`
+- OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_API_BASE` (optional), `OPENAI_MAX_TOKENS` (default 16384)
 - SMTP: `SMTP_SERVER`, `SMTP_PORT`, `SENDER`, `SENDER_PASSWORD`, `RECEIVER`
 
 ## Email Rendering Details
@@ -52,7 +52,7 @@
 - CI test workflow uploads debug logs/artifacts for inspection.
 
 ## Extending/Contributing
-- Add feeds by editing `feeds/blogs.json` or supplying `FEED_URL/BLOG_FEED_URL`.
-- Tweak summary prompt/target language in `translation.py` or via `TARGET_LANGUAGE`.
+- Add feeds by editing `feeds/blogs.json` or supplying `FEED_URL`.
+- Tweak summary/translation prompt or target language in `translation.py` or via `TARGET_LANGUAGE`.
 - Styling tweaks live in `construct_email.py` (inline CSS/HTML).
 - Consider adding `CODE_OF_CONDUCT.md`/`CONTRIBUTING.md` for community work; tests can expand from `tests/test_feeds.py`.

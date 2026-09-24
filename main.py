@@ -1,10 +1,13 @@
+"""Blog Pusher: fetch new posts from a feed catalog, digest them with an
+OpenAI-compatible LLM (summary + full translation in one request per
+article), and email the result as an HTML newsletter."""
+
 import argparse
 import datetime as dt
 import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -13,7 +16,7 @@ from dotenv import load_dotenv
 from loguru import logger
 
 from construct_email import render_email, send_email
-from feeds import FeedPost, fetch_recent_posts
+from feeds import FeedConfig, FeedPost, fetch_recent_posts, load_feed_configs_from_file
 from run_state import (
     DEFAULT_STATE_FILE,
     RunState,
@@ -21,7 +24,7 @@ from run_state import (
     load_run_state,
     save_run_state,
 )
-from translation import OpenAITranslator, looks_like_target_language
+from translation import Translator
 
 load_dotenv(override=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -30,37 +33,224 @@ parser = argparse.ArgumentParser(
     description="Send translated blog updates via email"
 )
 
+_DISABLED_TOKENS = ("", "none", "off", "disabled")
 
-def add_argument(*args, **kwargs):
-    parser.add_argument(*args, **kwargs)
+
+def _add_argument(*args, env: str | None = None, **kwargs):
+    """Add a CLI flag whose default comes from an environment variable.
+
+    The env name defaults to the flag's dest upper-cased (``--window_hours``
+    reads ``WINDOW_HOURS``); pass ``env=`` when the deployed variable name
+    differs (e.g. ``--openai_api_base`` reads ``OPENAI_API_BASE``).
+    """
     dest = kwargs.get("dest") or args[-1].lstrip("-").replace("-", "_")
-    env_name = dest.upper()
+    env_name = env or dest.upper()
     env_value = os.getenv(env_name)
-    if env_value in (None, ""):
-        return
-    arg_type = kwargs.get("type")
-    action = kwargs.get("action")
-    if action is argparse.BooleanOptionalAction:
-        env_value = env_value.lower() in {"1", "true", "yes", "on"}
-    elif arg_type is bool:
-        env_value = env_value.lower() in {"1", "true", "yes", "on"}
-    elif arg_type:
-        env_value = arg_type(env_value)
-    parser.set_defaults(**{dest: env_value})
+    if env_value not in (None, ""):
+        arg_type = kwargs.get("type")
+        action = kwargs.get("action")
+        if action in (argparse.BooleanOptionalAction, "store_true"):
+            env_value = env_value.lower() in {"1", "true", "yes", "on"}
+        elif arg_type:
+            env_value = arg_type(env_value)
+        kwargs["default"] = env_value
+    if kwargs.get("action") == "store_true":
+        kwargs.pop("type", None)
+    parser.add_argument(*args, **kwargs)
 
 
-@dataclass
-class FeedConfig:
-    url: str
-    name: Optional[str] = None
-    site: Optional[str] = None
-    owner: Optional[str] = None
-    category: Optional[str] = None
-    description: Optional[str] = None
-    accent_color: Optional[str] = None
-    tags: Optional[list[str]] = None
-    pinned: bool = False
-    parser: Optional[str] = None
+def _register_arguments() -> argparse.Namespace:
+    _add_argument(
+        "--feed_url",
+        type=str,
+        default="",
+        help="Optional single feed URL to include in addition to the feed list.",
+    )
+    _add_argument(
+        "--feed_list",
+        type=str,
+        default="feeds/blogs.json",
+        help="Path to a JSON file containing additional feed entries.",
+    )
+    _add_argument(
+        "--window_hours",
+        type=int,
+        default=24,
+        help="Lookback window in hours for new posts.",
+    )
+    _add_argument(
+        "--max_post_num",
+        type=int,
+        default=-1,
+        help="Maximum number of posts per digest; -1 keeps everything within the window.",
+    )
+    _add_argument(
+        "--max_posts_per_feed",
+        type=int,
+        default=-1,
+        help="Maximum number of posts to keep per feed; -1 keeps everything within the window.",
+    )
+    _add_argument(
+        "--fetch_workers",
+        type=int,
+        default=8,
+        help="Number of feeds fetched concurrently.",
+    )
+    _add_argument(
+        "--state_file",
+        type=str,
+        default=DEFAULT_STATE_FILE,
+        help="Path for run-state persistence (window end + delivered posts); 'none' disables.",
+    )
+    _add_argument(
+        "--state_max_backtrack_hours",
+        type=int,
+        default=72,
+        help="Cap on how far back a resumed window may reach after a long outage.",
+    )
+    _add_argument(
+        "--send_empty",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Send an email even when no new posts are found.",
+    )
+    _add_argument(
+        "--target_language",
+        type=str,
+        default="Chinese (Traditional)",
+        help="Language for the summary and full translation.",
+    )
+    _add_argument(
+        "--translation_max_chars",
+        type=int,
+        default=-1,
+        help="Cap characters per article sent for translation; -1 translates everything.",
+    )
+    _add_argument(
+        "--translation_chunk_chars",
+        type=int,
+        default=-1,
+        help="Split articles into requests at this size; -1 sends the whole article in one request.",
+    )
+    _add_argument(
+        "--translation_workers",
+        type=int,
+        default=4,
+        help="Number of articles digested concurrently.",
+    )
+    _add_argument(
+        "--email_max_posts",
+        type=int,
+        default=15,
+        help="Maximum posts per digest email before splitting into parts.",
+    )
+    _add_argument(
+        "--email_max_bytes",
+        type=int,
+        default=90000,
+        help="Approximate HTML size cap per digest email (Gmail clips at ~102KB).",
+    )
+    _add_argument(
+        "--email_html_dir",
+        type=str,
+        default="artifacts",
+        help="Directory for rendered digest HTML copies ('none' disables).",
+    )
+    _add_argument("--openai_api_key", type=str, help="OpenAI-compatible API key.")
+    _add_argument(
+        "--openai_api_base",
+        env="OPENAI_API_BASE",
+        type=str,
+        default="",
+        help="Base URL for OpenAI-compatible endpoints.",
+    )
+    _add_argument(
+        "--openai_model",
+        type=str,
+        help="Chat model name (e.g. gpt-4o-mini, glm-5.3).",
+    )
+    _add_argument(
+        "--openai_max_tokens",
+        type=int,
+        default=16384,
+        help="Output cap for LLM requests (0 = unset). Aggregators like "
+        "OpenRouter price against the model max when unset, which can "
+        "trigger 402 on limited-credit keys.",
+    )
+    _add_argument("--smtp_server", type=str, help="SMTP server hostname.")
+    _add_argument(
+        "--smtp_port",
+        type=int,
+        default=587,
+        help="SMTP server port; 587 for Gmail with STARTTLS.",
+    )
+    _add_argument("--sender", type=str, help="SMTP sender address.")
+    _add_argument("--sender_password", type=str, help="SMTP app password.")
+    _add_argument("--receiver", type=str, help="Recipient email address.")
+    _add_argument(
+        "--email_subject_prefix",
+        type=str,
+        default="Blog Pusher Digest",
+        help="Subject prefix for outgoing email.",
+    )
+    _add_argument(
+        "--failure_log",
+        type=str,
+        default="",
+        help="Optional path to write feed fetch failures (useful for test runs).",
+    )
+    parser.add_argument("--debug", action="store_true", help="Enable verbose logging.")
+    args = parser.parse_args()
+
+    logger.remove()
+    logger.add(sys.stdout, level="DEBUG" if args.debug else "INFO")
+    return args
+
+
+def _validate_config(args: argparse.Namespace) -> None:
+    required_fields = {
+        "openai_api_key": args.openai_api_key,
+        "openai_model": args.openai_model,
+        "smtp_server": args.smtp_server,
+        "smtp_port": args.smtp_port,
+        "sender": args.sender,
+        "sender_password": args.sender_password,
+        "receiver": args.receiver,
+    }
+    missing = [name for name, value in required_fields.items() if not value]
+    if missing:
+        raise ValueError(
+            f"Missing required configuration: {', '.join(missing)}. "
+            "Use CLI flags or environment variables (OPENAI_API_KEY, OPENAI_MODEL, "
+            "OPENAI_API_BASE, SMTP_SERVER, ...)."
+        )
+
+
+def _load_feed_configs(args: argparse.Namespace) -> list[FeedConfig]:
+    feed_configs: list[FeedConfig] = []
+    seen_urls: set[str] = set()
+
+    def append_config(config: FeedConfig | None):
+        if not config or not config.url:
+            return
+        if config.url in seen_urls:
+            return
+        seen_urls.add(config.url)
+        feed_configs.append(config)
+
+    if args.feed_list:
+        try:
+            for cfg in load_feed_configs_from_file(args.feed_list):
+                append_config(cfg)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to load feed list from {args.feed_list}") from exc
+
+    if args.feed_url:
+        append_config(FeedConfig(url=args.feed_url))
+
+    if not feed_configs:
+        raise ValueError("No feed URLs loaded. Provide a feed list or set FEED_URL.")
+    return feed_configs
 
 
 _TRACKING_QUERY_PARAMS = ("utm_", "ref", "fbclid", "gclid")
@@ -153,327 +343,6 @@ def _truncate_for_translation(text: str, cap: int) -> str:
     return head.rstrip()
 
 
-def _summary_fallback_from_translation(
-    translation: str | None, target_language: str
-) -> str | None:
-    value = (translation or "").strip()
-    if not value or value.startswith("[Translation"):
-        return None
-    flattened = " ".join(
-        line.strip() for line in value.splitlines() if line.strip()
-    ).strip()
-    if not flattened or not looks_like_target_language(flattened, target_language):
-        return None
-    if len(flattened) > 200:
-        flattened = flattened[:200].rstrip() + "..."
-    return flattened
-
-
-def _summary_is_usable(summary: str | None, target_language: str) -> bool:
-    value = (summary or "").strip()
-    if not value or value.startswith("[Translation"):
-        return False
-    return looks_like_target_language(value, target_language)
-
-
-def load_feed_configs_from_file(path: str) -> list[FeedConfig]:
-    feed_path = Path(path).expanduser()
-    if not feed_path.is_absolute():
-        feed_path = Path(__file__).resolve().parent / feed_path
-    if not feed_path.exists():
-        raise FileNotFoundError(f"Feed list {feed_path} does not exist")
-
-    try:
-        data = json.loads(feed_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Unable to parse feed list {feed_path}: {exc}") from exc
-
-    if isinstance(data, dict):
-        entries = data.get("feeds", [])
-    elif isinstance(data, list):
-        entries = data
-    else:
-        raise ValueError(f"Unsupported feed list structure in {feed_path}")
-
-    configs: list[FeedConfig] = []
-    for entry in entries:
-        if isinstance(entry, str):
-            url = entry.strip()
-            if url:
-                configs.append(FeedConfig(url=url))
-            continue
-        if not isinstance(entry, dict):
-            continue
-        url = (entry.get("feed") or entry.get("url") or "").strip()
-        if url:
-            tags = entry.get("tags") or entry.get("topics") or []
-            if isinstance(tags, str):
-                tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
-            elif isinstance(tags, list):
-                tags = [str(tag).strip() for tag in tags if str(tag).strip()]
-            else:
-                tags = []
-            configs.append(
-                FeedConfig(
-                    url=url,
-                    name=(entry.get("name") or "").strip() or None,
-                    site=(entry.get("site") or "").strip() or None,
-                    owner=(entry.get("owner") or "").strip() or None,
-                    category=(entry.get("category") or "").strip() or None,
-                    description=(entry.get("description") or "").strip() or None,
-                    accent_color=(entry.get("accent_color") or "").strip() or None,
-                    tags=tags or None,
-                    pinned=bool(entry.get("pinned")),
-                    parser=(entry.get("parser") or "").strip() or None,
-                )
-            )
-    return configs
-
-
-def load_feed_urls_from_file(path: str) -> list[str]:
-    return [cfg.url for cfg in load_feed_configs_from_file(path)]
-
-
-def _register_arguments() -> argparse.Namespace:
-    add_argument(
-        "--feed_url",
-        type=str,
-        default="",
-        help="Optional single feed URL to include in addition to the feed list.",
-    )
-    add_argument(
-        "--blog_feed_url",
-        type=str,
-        default="",
-        help="Optional second feed URL (legacy compatibility).",
-    )
-    add_argument(
-        "--feed_list",
-        type=str,
-        default="feeds/blogs.json",
-        help="Path to a JSON file containing additional feed entries.",
-    )
-    add_argument(
-        "--window_hours",
-        type=int,
-        default=24,
-        help="Lookback window in hours for new posts.",
-    )
-    add_argument(
-        "--max_post_num",
-        type=int,
-        default=-1,
-        help="Maximum number of posts per digest; -1 keeps everything within the window.",
-    )
-    add_argument(
-        "--max_posts_per_feed",
-        type=int,
-        default=-1,
-        help="Maximum number of posts to keep per feed; -1 keeps everything within the window.",
-    )
-    add_argument(
-        "--fetch_workers",
-        type=int,
-        default=8,
-        help="Number of feeds fetched concurrently.",
-    )
-    add_argument(
-        "--state_file",
-        type=str,
-        default=DEFAULT_STATE_FILE,
-        help="Path for run-state persistence (window end + delivered posts); 'none' disables.",
-    )
-    add_argument(
-        "--state_max_backtrack_hours",
-        type=int,
-        default=72,
-        help="Cap on how far back a resumed window may reach after a long outage.",
-    )
-    add_argument(
-        "--send_empty",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Send an email even when no new posts are found.",
-    )
-    add_argument(
-        "--target_language",
-        type=str,
-        default="Chinese (Traditional)",
-        help="Language for the translated summary.",
-    )
-    add_argument(
-        "--translation_max_chars",
-        type=int,
-        default=-1,
-        help="Cap characters per article sent for full translation; -1 translates everything.",
-    )
-    add_argument(
-        "--translation_chunk_chars",
-        type=int,
-        default=-1,
-        help="Chunk size for translation requests; -1 sends the whole article in one request.",
-    )
-    add_argument(
-        "--email_max_posts",
-        type=int,
-        default=15,
-        help="Maximum posts per digest email before splitting into parts.",
-    )
-    add_argument(
-        "--email_max_bytes",
-        type=int,
-        default=90000,
-        help="Approximate HTML size cap per digest email (Gmail clips at ~102KB).",
-    )
-    add_argument(
-        "--email_html_dir",
-        type=str,
-        default="artifacts",
-        help="Directory for rendered digest HTML copies ('none' disables).",
-    )
-    add_argument("--openai_api_key", type=str, help="OpenAI API key.")
-    add_argument(
-        "--openai_base_url",
-        type=str,
-        default="",
-        help="Optional OpenAI base URL for compatible endpoints.",
-    )
-    add_argument(
-        "--openai_model",
-        type=str,
-        help="OpenAI chat model name (e.g. gpt-4o-mini).",
-    )
-    add_argument(
-        "--openai_max_tokens",
-        type=int,
-        default=16384,
-        help="Output cap for LLM requests (0 = unset). Aggregators like "
-        "OpenRouter price against the model max when unset, which can "
-        "trigger 402 on limited-credit keys.",
-    )
-    add_argument("--nvidia_api_key", type=str, help="NVIDIA API key.")
-    add_argument(
-        "--nvidia_api_url",
-        type=str,
-        default="",
-        help="Legacy NVIDIA chat completions endpoint.",
-    )
-    add_argument(
-        "--nvidia_base_url",
-        type=str,
-        default=OpenAITranslator.NVIDIA_BASE_URL,
-        help="NVIDIA OpenAI-compatible API base URL.",
-    )
-    add_argument(
-        "--nvidia_model",
-        type=str,
-        default="z-ai/glm-5.2",
-        help="NVIDIA chat model name.",
-    )
-    add_argument(
-        "--nvidia_rpm",
-        type=int,
-        default=4,
-        help="Maximum NVIDIA chat completion requests per minute.",
-    )
-    add_argument("--smtp_server", type=str, help="SMTP server hostname.")
-    add_argument(
-        "--smtp_port",
-        type=int,
-        default=587,
-        help="SMTP server port; 587 for Gmail with STARTTLS.",
-    )
-    add_argument("--sender", type=str, help="SMTP sender address.")
-    add_argument("--sender_password", type=str, help="SMTP app password.")
-    add_argument("--receiver", type=str, help="Recipient email address.")
-    add_argument(
-        "--email_subject_prefix",
-        type=str,
-        default="Blog Pusher Digest",
-        help="Subject prefix for outgoing email.",
-    )
-    add_argument(
-        "--failure_log",
-        type=str,
-        default="",
-        help="Optional path to write feed fetch failures (useful for test runs).",
-    )
-    parser.add_argument("--debug", action="store_true", help="Enable verbose logging.")
-    args = parser.parse_args()
-
-    logger.remove()
-    logger.add(sys.stdout, level="DEBUG" if args.debug else "INFO")
-
-    if not args.openai_base_url:
-        legacy_base = os.getenv("OPENAI_API_BASE")
-        if legacy_base:
-            args.openai_base_url = legacy_base
-    return args
-
-
-def _validate_config(args: argparse.Namespace) -> bool:
-    use_nvidia = bool(args.nvidia_api_key)
-    required_fields = {
-        "smtp_server": args.smtp_server,
-        "smtp_port": args.smtp_port,
-        "sender": args.sender,
-        "sender_password": args.sender_password,
-        "receiver": args.receiver,
-    }
-    if use_nvidia:
-        required_fields.update(
-            {
-                "nvidia_api_key": args.nvidia_api_key,
-                "nvidia_model": args.nvidia_model,
-            }
-        )
-    else:
-        required_fields.update(
-            {
-                "openai_api_key": args.openai_api_key,
-                "openai_model": args.openai_model,
-            }
-        )
-    missing = [name for name, value in required_fields.items() if not value]
-    if missing:
-        raise ValueError(
-            f"Missing required configuration: {', '.join(missing)}. "
-            "Use CLI flags or environment variables. Set NVIDIA_API_KEY to use NVIDIA, "
-            "or set OPENAI_API_KEY and OPENAI_MODEL to use OpenAI."
-        )
-    return use_nvidia
-
-
-def _load_feed_configs(args: argparse.Namespace) -> list[FeedConfig]:
-    feed_configs: list[FeedConfig] = []
-    seen_urls: set[str] = set()
-
-    def append_config(config: FeedConfig | None):
-        if not config or not config.url:
-            return
-        if config.url in seen_urls:
-            return
-        seen_urls.add(config.url)
-        feed_configs.append(config)
-
-    if args.feed_list:
-        try:
-            for cfg in load_feed_configs_from_file(args.feed_list):
-                append_config(cfg)
-        except Exception as exc:
-            raise RuntimeError(f"Failed to load feed list from {args.feed_list}") from exc
-
-    for extra_url in (args.feed_url, args.blog_feed_url):
-        if extra_url:
-            append_config(FeedConfig(url=extra_url))
-
-    if not feed_configs:
-        raise ValueError(
-            "No feed URLs loaded. Provide a feed list or set FEED_URL/BLOG_FEED_URL."
-        )
-    return feed_configs
-
-
 def _fetch_all_posts(
     feed_configs: list[FeedConfig],
     *,
@@ -548,51 +417,34 @@ def _attach_metadata(posts: list[FeedPost], metadata_by_url: dict[str, FeedConfi
         post.pinned = bool(meta.pinned) if meta else False
 
 
-def _translate_posts(posts: list[FeedPost], args: argparse.Namespace, use_nvidia: bool) -> None:
+def _translate_posts(posts: list[FeedPost], args: argparse.Namespace) -> None:
     if not posts:
         return
-    if use_nvidia:
-        logger.info(
-            "Using NVIDIA chat completions model {} with rpm limit {}.",
-            args.nvidia_model,
-            args.nvidia_rpm,
-        )
-    else:
-        logger.info("Using OpenAI-compatible chat completions model {}.", args.openai_model)
-    translator = OpenAITranslator(
-        api_key=args.nvidia_api_key if use_nvidia else args.openai_api_key,
-        base_url=args.openai_base_url or None,
-        model=args.nvidia_model if use_nvidia else args.openai_model,
+    logger.info(
+        "Digesting {} post(s) with model {} using {} worker(s).",
+        len(posts),
+        args.openai_model,
+        max(1, args.translation_workers),
+    )
+    translator = Translator(
+        api_key=args.openai_api_key,
+        base_url=args.openai_api_base or None,
+        model=args.openai_model,
         target_language=args.target_language,
-        provider="nvidia" if use_nvidia else "openai",
-        nvidia_api_url=args.nvidia_api_url,
-        nvidia_base_url=args.nvidia_base_url,
-        nvidia_rpm=args.nvidia_rpm,
+        max_tokens=args.openai_max_tokens if args.openai_max_tokens > 0 else None,
         chunk_chars=args.translation_chunk_chars,
-        openai_max_tokens=args.openai_max_tokens if args.openai_max_tokens > 0 else None,
+        workers=args.translation_workers,
     )
-    summaries = translator.translate_batch_by_feed(
-        [p.content_text for p in posts],
-        [p.feed_url for p in posts],
-    )
-    translation_texts = [p.content_text for p in posts]
+    texts = [p.content_text for p in posts]
     if args.translation_max_chars > 0:
-        translation_texts = [
-            _truncate_for_translation(p.content_text, args.translation_max_chars)
-            for p in posts
+        texts = [
+            _truncate_for_translation(text, args.translation_max_chars)
+            for text in texts
         ]
-    translations = translator.translate_batch(translation_texts)
-    for post, summary in zip(posts, summaries, strict=False):
-        post.summary = summary
-    for post, translation in zip(posts, translations, strict=False):
-        post.translation = translation
-
-    for post in posts:
-        if _summary_is_usable(post.summary, args.target_language):
-            continue
-        fallback = _summary_fallback_from_translation(post.translation, args.target_language)
-        if fallback:
-            post.summary = fallback
+    digests = translator.digest_texts(texts)
+    for post, digest in zip(posts, digests, strict=False):
+        post.summary = digest.summary
+        post.translation = digest.translation
 
 
 def _deliver_digest_emails(
@@ -605,8 +457,7 @@ def _deliver_digest_emails(
     )
     date_str = dt.datetime.now().strftime("%Y-%m-%d")
     html_dir: Path | None = None
-    token = (args.email_html_dir or "").strip().lower()
-    if token not in ("", "none", "off", "disabled"):
+    if (args.email_html_dir or "").strip().lower() not in _DISABLED_TOKENS:
         html_dir = Path(args.email_html_dir).expanduser()
         if not html_dir.is_absolute():
             html_dir = Path(__file__).resolve().parent / html_dir
@@ -648,17 +499,15 @@ def _deliver_digest_emails(
 
 def main() -> None:
     args = _register_arguments()
-    use_nvidia = _validate_config(args)
+    _validate_config(args)
 
     limit = None if args.max_post_num == -1 else args.max_post_num
     per_feed_limit = None if args.max_posts_per_feed <= 0 else args.max_posts_per_feed
     feed_configs = _load_feed_configs(args)
     metadata_by_url = {cfg.url: cfg for cfg in feed_configs}
 
-    state_token = (args.state_file or "").strip().lower()
-    state_enabled = state_token not in ("", "none", "off", "disabled")
     state_path: Path | None = None
-    if state_enabled:
+    if (args.state_file or "").strip().lower() not in _DISABLED_TOKENS:
         state_path = Path(args.state_file).expanduser()
         if not state_path.is_absolute():
             state_path = Path(__file__).resolve().parent / state_path
@@ -705,6 +554,9 @@ def main() -> None:
             )
         posts = fresh_posts
 
+    if limit is not None and limit > 0:
+        posts = posts[-limit:]
+
     def _persist_run_state() -> None:
         if state_path is None:
             return
@@ -716,20 +568,13 @@ def main() -> None:
         )
         logger.info(f"Run state saved to {state_path}")
 
-    if limit is not None and limit > 0:
-        posts = posts[-limit:]
-
     if not posts:
         logger.info("No new posts found in the requested window.")
         if not args.send_empty:
             _persist_run_state()
             return
-        _translate_posts(posts, args, use_nvidia)
-        _deliver_digest_emails(posts, args)
-        _persist_run_state()
-        return
 
-    _translate_posts(posts, args, use_nvidia)
+    _translate_posts(posts, args)
     _deliver_digest_emails(posts, args)
     _persist_run_state()
 

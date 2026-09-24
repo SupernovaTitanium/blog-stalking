@@ -3,17 +3,18 @@ from __future__ import annotations
 import time
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
+
+from feedparser import FeedParserDict
 
 from feeds import (
+    _entry_content_html,
     _extract_entry_datetime,
-    _trim_boilerplate_lines,
-    _extract_entry_html,
     _parse_feed,
     _sanitize_feed_payload,
+    _trim_boilerplate_lines,
     fetch_recent_posts,
 )
-from feedparser import FeedParserDict
-from unittest.mock import patch
 
 
 class JekyllListingTest(unittest.TestCase):
@@ -430,6 +431,33 @@ class WholePageExtractionTest(unittest.TestCase):
         self.assertIn("Bare page body content.", posts[0].content_text)
 
 
+class PerFeedLimitTest(unittest.TestCase):
+    def test_limit_keeps_newest_posts_not_oldest(self) -> None:
+        # Feeds list newest-first; capping before sorting would keep the
+        # oldest entries instead of the newest.
+        items = "".join(
+            f"<item><title>post {day}</title>"
+            f"<link>https://example.com/{day}</link>"
+            f"<pubDate>Wed, 0{day} Sep 2026 06:00:00 +0000</pubDate>"
+            "<description>enough body text to avoid article fetches</description></item>"
+            for day in (1, 2, 3, 4)
+        )
+        feed_xml = (
+            '<rss version="2.0"><channel><title>T</title>'
+            f"{items}</channel></rss>"
+        ).encode("utf-8")
+
+        with patch("feeds._fetch_feed_bytes", return_value=feed_xml):
+            posts = fetch_recent_posts(
+                "https://example.com/feed",
+                window_hours=24,
+                limit=2,
+                cutoff=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual([p.title for p in posts], ["post 3", "post 4"])
+
+
 class ExtractEntryHtmlTest(unittest.TestCase):
     def test_prefers_content_payload(self) -> None:
         entry = {
@@ -439,7 +467,7 @@ class ExtractEntryHtmlTest(unittest.TestCase):
             ],
             "summary": "<p>ignored</p>",
         }
-        self.assertEqual(_extract_entry_html(entry), "<p>primary</p>")
+        self.assertEqual(_entry_content_html(entry), "<p>primary</p>")
 
     def test_falls_back_to_summary_detail(self) -> None:
         entry = {
@@ -448,16 +476,16 @@ class ExtractEntryHtmlTest(unittest.TestCase):
             }
         }
         self.assertEqual(
-            _extract_entry_html(entry),
+            _entry_content_html(entry),
             "<div>summary detail</div>",
         )
 
     def test_uses_plain_summary_when_html_missing(self) -> None:
         entry = {"summary": "Plain text fallback"}
-        self.assertEqual(_extract_entry_html(entry), "Plain text fallback")
+        self.assertEqual(_entry_content_html(entry), "Plain text fallback")
 
     def test_returns_empty_string_when_no_content(self) -> None:
-        self.assertEqual(_extract_entry_html({}), "")
+        self.assertEqual(_entry_content_html({}), "")
 
 
 class ExtractEntryDatetimeTest(unittest.TestCase):
@@ -532,31 +560,48 @@ class ParseFeedRecoveryTest(unittest.TestCase):
             )
 
         self.assertEqual(len(parsed.entries), 1)
-        self.assertEqual(parsed.entries[0]["title"], "ok")
+        self.assertEqual(parsed.entries[0].title, "ok")
+        self.assertEqual(parsed.title, "Example")
 
-    def test_prefers_sanitized_parse_for_recoverable_bozo_feed(self) -> None:
-        clean_payload = b"<rss><channel><item><title>ok</title></item></channel></rss>"
+    def test_sanitized_reparse_recovers_bozo_feed_without_entries(self) -> None:
+        calls: list[bytes] = []
 
         def fake_parse(input_data, **kwargs):
-            if isinstance(input_data, (bytes, bytearray)):
+            calls.append(input_data)
+            if len(calls) == 1:
                 return FeedParserDict(
-                    bozo=False,
-                    entries=[{"title": "clean"}],
-                    feed={"title": "Example"},
+                    bozo=True,
+                    bozo_exception=Exception("bad xml"),
+                    entries=[],
+                    feed={},
                 )
             return FeedParserDict(
-                bozo=True,
-                bozo_exception=Exception("bad xml"),
-                entries=[{"title": "dirty"}],
+                bozo=False,
+                entries=[
+                    FeedParserDict(title="clean", link="https://example.com/p")
+                ],
                 feed={"title": "Example"},
             )
 
         with patch("feeds.feedparser.parse", side_effect=fake_parse):
-            with patch("feeds._fetch_feed_bytes", return_value=clean_payload):
+            with patch("feeds._fetch_feed_bytes", return_value=b"<rss>dirty</rss>"):
                 parsed = _parse_feed("https://example.com/feed")
 
-        self.assertFalse(parsed.bozo)
-        self.assertEqual(parsed.entries[0]["title"], "clean")
+        self.assertEqual(parsed.title, "Example")
+        self.assertEqual(len(parsed.entries), 1)
+        self.assertEqual(parsed.entries[0].title, "clean")
+
+    def test_title_falls_back_to_feed_link_then_url(self) -> None:
+        payload = (
+            '<rss version="2.0"><channel><link>https://example.com/</link>'
+            "<item><title>ok</title></item>"
+            "</channel></rss>"
+        ).encode("utf-8")
+
+        with patch("feeds._fetch_feed_bytes", return_value=payload):
+            parsed = _parse_feed("https://example.com/feed")
+
+        self.assertEqual(parsed.title, "https://example.com/")
 
 
 class ParseFeedBudgetTest(unittest.TestCase):
@@ -596,7 +641,7 @@ class ParseFeedBudgetTest(unittest.TestCase):
         with patch("feeds._fetch_feed_bytes", side_effect=allow_single_fetch):
             parsed = _parse_feed("https://example.com/feed")
 
-        self.assertFalse(parsed.bozo)
+        self.assertEqual(parsed.title, "Empty")
         self.assertEqual(len(parsed.entries), 0)
 
 

@@ -1,22 +1,105 @@
+"""Feed fetching and parsing.
+
+Everything here resolves to a :class:`ParsedFeed`: RSS/Atom via feedparser
+and, for sites that publish no feed at all, the ``jekyll_listing`` parser
+that rebuilds entries from a blog-index HTML page. The raw feedparser dicts
+never escape this module.
+"""
+
 from __future__ import annotations
 
 import calendar
 import gzip
+import ipaddress
+import json
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
 import zlib
-from urllib.parse import urljoin, urlparse, urlunparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape, unescape as html_unescape
-from types import SimpleNamespace
+from pathlib import Path
 from typing import Any, List, Mapping, Optional
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import feedparser
 from bs4 import BeautifulSoup
 from loguru import logger
+
+
+@dataclass
+class FeedConfig:
+    """One catalog entry from the JSON feed list."""
+
+    url: str
+    name: Optional[str] = None
+    site: Optional[str] = None
+    owner: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    accent_color: Optional[str] = None
+    tags: Optional[list[str]] = None
+    pinned: bool = False
+    parser: Optional[str] = None
+
+
+def load_feed_configs_from_file(path: str) -> list[FeedConfig]:
+    """Load the JSON feed catalog: a list of URLs/objects, or {"feeds": [...]}."""
+    feed_path = Path(path).expanduser()
+    if not feed_path.is_absolute():
+        feed_path = Path(__file__).resolve().parent / feed_path
+    if not feed_path.exists():
+        raise FileNotFoundError(f"Feed list {feed_path} does not exist")
+
+    try:
+        data = json.loads(feed_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Unable to parse feed list {feed_path}: {exc}") from exc
+
+    if isinstance(data, dict):
+        entries = data.get("feeds", [])
+    elif isinstance(data, list):
+        entries = data
+    else:
+        raise ValueError(f"Unsupported feed list structure in {feed_path}")
+
+    configs: list[FeedConfig] = []
+    for entry in entries:
+        if isinstance(entry, str):
+            url = entry.strip()
+            if url:
+                configs.append(FeedConfig(url=url))
+            continue
+        if not isinstance(entry, dict):
+            continue
+        url = (entry.get("feed") or entry.get("url") or "").strip()
+        if not url:
+            continue
+        tags = entry.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
+        elif isinstance(tags, list):
+            tags = [str(tag).strip() for tag in tags if str(tag).strip()]
+        else:
+            tags = []
+        configs.append(
+            FeedConfig(
+                url=url,
+                name=(entry.get("name") or "").strip() or None,
+                site=(entry.get("site") or "").strip() or None,
+                owner=(entry.get("owner") or "").strip() or None,
+                category=(entry.get("category") or "").strip() or None,
+                description=(entry.get("description") or "").strip() or None,
+                accent_color=(entry.get("accent_color") or "").strip() or None,
+                tags=tags or None,
+                pinned=bool(entry.get("pinned")),
+                parser=(entry.get("parser") or "").strip() or None,
+            )
+        )
+    return configs
 
 
 @dataclass
@@ -40,6 +123,23 @@ class FeedPost:
     translation: Optional[str] = None
     pinned: bool = False
     timestamp_known: bool = True
+
+
+@dataclass
+class Entry:
+    """A normalized feed entry, independent of the source format."""
+
+    id: str
+    link: str
+    title: str
+    published: Optional[datetime]
+    content_html: str
+
+
+@dataclass
+class ParsedFeed:
+    title: str
+    entries: List[Entry] = field(default_factory=list)
 
 
 _FEED_HEADERS = {
@@ -277,6 +377,7 @@ def _fetch_article_content(
         return node.decode(), text
     return None
 
+
 # Feeds occasionally omit entry timestamps. Entries near the top of such
 # feeds are usually recent, so include the first few as "now" and let the
 # run-state seen-list suppress repeats; undated entries never evict dated
@@ -297,15 +398,42 @@ def _parse_datetime(struct_time: time.struct_time | None) -> datetime | None:
 
 
 def _extract_entry_datetime(entry: Mapping[str, Any]) -> datetime | None:
-    for field in ("published_parsed", "updated_parsed", "created_parsed"):
-        struct_time = entry.get(field)
-        parsed = _parse_datetime(struct_time)
+    for field_name in ("published_parsed", "updated_parsed", "created_parsed"):
+        parsed = _parse_datetime(entry.get(field_name))
         if parsed is not None:
             return parsed
     return None
 
 
+def _assert_public_host(url: str) -> None:
+    """Only public http(s) hosts may be fetched.
+
+    Feed catalogs are operator-authored, but every request still goes
+    through this gate: non-http(s) schemes and hostnames that resolve to
+    loopback/private/link-local addresses (localhost, cloud metadata,
+    internal services) are refused before any connection is made.
+    """
+    parsed = urlparse(url)
+    scheme = parsed.scheme.lower()
+    if scheme not in ("http", "https"):
+        raise ValueError(f"Refusing non-http(s) fetch URL: {url!r}")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError(f"Refusing fetch URL without a hostname: {url!r}")
+    try:
+        addrinfos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as exc:
+        raise ValueError(f"Cannot resolve feed host {hostname!r}: {exc}") from exc
+    for info in addrinfos:
+        address = ipaddress.ip_address(info[4][0])
+        if not address.is_global:
+            raise ValueError(
+                f"Refusing fetch to non-public address {address} for {url!r}"
+            )
+
+
 def _fetch_feed_bytes_once(url: str, max_bytes: int | None = None) -> bytes:
+    _assert_public_host(url)
     request = urllib.request.Request(url, headers=_FEED_HEADERS)
     with urllib.request.urlopen(request, timeout=20) as response:
         data = response.read(max_bytes) if max_bytes else response.read()
@@ -445,14 +573,49 @@ def _fetch_payload_with_www_fallback(url: str, seen: set[str]) -> tuple[bytes, s
         raise
 
 
-class _ListingEntry(dict):
-    """Attribute access shim so listing entries quack like feedparser entries."""
+def _entry_content_html(entry: Mapping[str, Any]) -> str:
+    """Pick the best HTML payload from a feedparser entry."""
 
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self[name]
-        except KeyError:
-            raise AttributeError(name) from None
+    def _coerce(candidate: Any) -> str:
+        if not candidate:
+            return ""
+        if isinstance(candidate, str):
+            return candidate
+        if isinstance(candidate, (list, tuple)):
+            for item in candidate:
+                value = _coerce(item)
+                if value:
+                    return value
+            return ""
+        if isinstance(candidate, dict):
+            return candidate.get("value") or ""
+        return getattr(candidate, "value", None) or ""
+
+    value = _coerce(entry.get("content"))
+    if value:
+        return value
+    for field_name in ("summary", "summary_detail", "description"):
+        value = _coerce(entry.get(field_name))
+        if value:
+            return value
+    return ""
+
+
+def _entries_from_feedparser(feed: feedparser.FeedParserDict) -> List[Entry]:
+    entries: List[Entry] = []
+    for raw in getattr(feed, "entries", None) or []:
+        link = str(getattr(raw, "link", "") or "")
+        title = html_unescape(str(getattr(raw, "title", "") or "")).strip()
+        entries.append(
+            Entry(
+                id=str(getattr(raw, "id", "") or link),
+                link=link,
+                title=title,
+                published=_extract_entry_datetime(raw),
+                content_html=_entry_content_html(raw),
+            )
+        )
+    return entries
 
 
 # Jekyll's default permalink encodes the publish date in the URL:
@@ -460,8 +623,8 @@ class _ListingEntry(dict):
 _DATED_POST_PATH = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/([^/?#]+)\.html?")
 
 
-def _parse_jekyll_listing(listing_url: str):
-    """Build a feed-like object from a Jekyll blog-index HTML page.
+def _parse_jekyll_listing(listing_url: str) -> ParsedFeed:
+    """Build a feed from a Jekyll blog-index HTML page.
 
     For sites that publish no feed at all (e.g. minregret.com), the blog
     listing page still exposes every post as <a href="/YYYY/MM/DD/slug.html">;
@@ -474,7 +637,7 @@ def _parse_jekyll_listing(listing_url: str):
 
     soup = BeautifulSoup(html_text, "html.parser")
     page_title = soup.title.get_text(strip=True) if soup.title else listing_url
-    entries: list[_ListingEntry] = []
+    entries: list[Entry] = []
     seen_links: set[str] = set()
     for anchor in soup.find_all("a", href=True):
         link = urljoin(listing_url, anchor["href"])
@@ -487,22 +650,19 @@ def _parse_jekyll_listing(listing_url: str):
         seen_links.add(link)
         year, month, day = (int(part) for part in match.group(1, 2, 3))
         entries.append(
-            _ListingEntry(
+            Entry(
                 id=link,
                 link=link,
                 title=title,
-                published_parsed=time.strptime(f"{year}-{month}-{day}", "%Y-%m-%d"),
+                published=datetime(year, month, day, tzinfo=timezone.utc),
+                content_html="",
             )
         )
     if not entries:
         raise RuntimeError(
             f"Failed to parse listing {listing_url}: no dated post links found"
         )
-    return SimpleNamespace(
-        bozo=False,
-        feed={"title": page_title, "link": listing_url},
-        entries=entries,
-    )
+    return ParsedFeed(title=page_title, entries=entries)
 
 
 def parse_feed(
@@ -512,7 +672,8 @@ def parse_feed(
     parser: str | None = None,
     max_candidates: int = 8,
     deadline: float | None = None,
-):
+) -> ParsedFeed:
+    """Fetch and parse a feed into a normalized :class:`ParsedFeed`."""
     if parser == "jekyll_listing":
         return _parse_jekyll_listing(feed_url)
     if parser is not None:
@@ -532,7 +693,7 @@ def _parse_feed(
     seen: set[str] | None = None,
     max_candidates: int = 8,
     deadline: float | None = None,
-) -> feedparser.FeedParserDict:
+) -> ParsedFeed:
     if seen is None:
         seen = set()
     if feed_url in seen:
@@ -557,21 +718,23 @@ def _parse_feed(
     feed = feedparser.parse(payload)
     if feed.bozo:
         sanitized_feed = feedparser.parse(_sanitize_feed_payload(payload))
-        sanitized_entries = getattr(sanitized_feed, "entries", None)
-        if sanitized_entries and (
+        if getattr(sanitized_feed, "entries", None) and (
             not sanitized_feed.bozo or not getattr(feed, "entries", None)
         ):
             feed = sanitized_feed
-        elif not getattr(feed, "entries", None):
-            feed = sanitized_feed
 
-    entries = getattr(feed, "entries", None)
+    entries = _entries_from_feedparser(feed)
     html_text = "" if entries else payload.decode("utf-8", errors="replace")
     # feedparser parses HTML pages leniently into empty, non-bozo feeds; we
     # lost its content-type check by parsing pre-fetched bytes, so detect
     # HTML pages ourselves to let link discovery kick in.
     if entries or (not feed.bozo and not _looks_like_html(html_text)):
-        return feed
+        if feed.bozo and entries:
+            logger.warning(
+                f"Feed {feed_url} reported parsing issues ({feed.bozo_exception}); continuing."
+            )
+        feed_title = feed.feed.get("title") or feed.feed.get("link") or feed_url
+        return ParsedFeed(title=feed_title, entries=entries)
 
     candidates: list[str] = []
     if _looks_like_html(html_text):
@@ -607,41 +770,6 @@ def _parse_feed(
     )
 
 
-def _coerce_html_value(candidate: Any) -> str:
-    if not candidate:
-        return ""
-    if isinstance(candidate, str):
-        return candidate
-    if isinstance(candidate, (list, tuple)):
-        for item in candidate:
-            value = _coerce_html_value(item)
-            if value:
-                return value
-        return ""
-    if isinstance(candidate, dict):
-        value = candidate.get("value")
-        return value or ""
-    value = getattr(candidate, "value", None)
-    return value or ""
-
-
-def _extract_entry_html(entry: Mapping[str, Any]) -> str:
-    html_candidates: list[str] = []
-    content = entry.get("content")
-    value = _coerce_html_value(content)
-    if value:
-        html_candidates.append(value)
-    for field in ("summary", "summary_detail", "description"):
-        value = _coerce_html_value(entry.get(field))
-        if value:
-            html_candidates.append(value)
-            break
-    for html in html_candidates:
-        if html:
-            return html
-    return ""
-
-
 def fetch_recent_posts(
     feed_url: str,
     window_hours: int = 24,
@@ -653,30 +781,23 @@ def fetch_recent_posts(
     max_candidates: int = 8,
     fetch_budget_seconds: float = 120.0,
 ) -> List[FeedPost]:
+    """Return the posts of a feed published after ``cutoff``, as FeedPosts."""
     logger.debug(f"Loading feed from {feed_url}")
     deadline = time.monotonic() + fetch_budget_seconds
-    feed = parse_feed(
+    parsed = parse_feed(
         feed_url,
         site_url=site_url,
         parser=parser,
         max_candidates=max_candidates,
         deadline=deadline,
     )
-    if feed.bozo:
-        if getattr(feed, "entries", None):
-            logger.warning(
-                f"Feed {feed_url} reported parsing issues ({feed.bozo_exception}); continuing."
-            )
-        else:
-            raise RuntimeError(f"Failed to parse feed {feed_url}: {feed.bozo_exception}")
 
     if cutoff is None:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
-    posts: List[FeedPost] = []
-    feed_title = feed.feed.get("title") or feed.feed.get("link") or feed_url
     fetched_at = datetime.now(timezone.utc)
-    for index, entry in enumerate(feed.entries):
-        published = _extract_entry_datetime(entry)
+    posts: List[FeedPost] = []
+    for index, entry in enumerate(parsed.entries):
+        published = entry.published
         timestamp_known = published is not None
         if published is None:
             if index < _UNDATED_HEAD_LIMIT:
@@ -692,7 +813,7 @@ def fetch_recent_posts(
         if published < cutoff:
             continue
 
-        link = getattr(entry, "link", feed.feed.get("link"))
+        link = entry.link or parsed.title
         if not link:
             continue
         if not urlparse(link).scheme:
@@ -701,39 +822,31 @@ def fetch_recent_posts(
             # it fetched the URL itself); absolute links pass through as-is.
             link = urljoin(feed_url, link)
 
-        raw_html = _extract_entry_html(entry)
+        raw_html = entry.content_html
         soup = BeautifulSoup(raw_html or "", "html.parser")
         text = _trim_boilerplate_lines(_normalize_text_blocks(soup.get_text("\n")))
-        title = (getattr(entry, "title", "") or text or "New post").strip()
+        title = (entry.title or text or "New post").strip()
         if len(title) > _TITLE_MAX_LEN:
             title = title[:_TITLE_MAX_LEN].rstrip() + "…"
 
-        source = feed_title
-        source_entry = entry.get("source")
-        if isinstance(source_entry, dict):
-            source = (
-                source_entry.get("title")
-                or source_entry.get("href")
-                or feed_title
-            )
-        elif isinstance(source_entry, str):
-            source = source_entry or feed_title
-
         posts.append(
             FeedPost(
-                id=getattr(entry, "id", link),
+                id=entry.id or link,
                 url=link,
                 title=title,
                 published=published,
                 content_html=raw_html
                 or (f"<p>{html_escape(text)}</p>" if text else f"<p>{html_escape(title)}</p>"),
                 content_text=text or title,
-                source=source,
+                source=parsed.title,
                 feed_url=feed_url,
                 timestamp_known=timestamp_known,
             )
         )
 
+    # Sort before limiting so a per-feed cap keeps the newest posts; feeds
+    # list newest-first, and capping that order would keep the oldest.
+    posts.sort(key=lambda p: p.published)
     dated = [p for p in posts if p.timestamp_known]
     undated = [p for p in posts if not p.timestamp_known]
     if limit is not None and limit > 0:
@@ -758,5 +871,4 @@ def fetch_recent_posts(
             if article is not None:
                 post.content_html, post.content_text = article
 
-    posts.sort(key=lambda p: p.published)
     return posts

@@ -3,14 +3,11 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timezone
 
-from feeds import FeedPost
+from feeds import FeedPost, load_feed_configs_from_file
 from main import (
     _post_key,
     _split_posts_for_email,
-    _summary_fallback_from_translation,
-    _summary_is_usable,
     _truncate_for_translation,
-    load_feed_configs_from_file,
 )
 
 
@@ -116,42 +113,6 @@ class TranslationTruncationTest(unittest.TestCase):
         # never a dangling fragment: always ends with a full sentence
         self.assertTrue(truncated.endswith("。"))
         self.assertNotEqual(truncated, text)
-
-
-class SummaryFallbackTest(unittest.TestCase):
-    def test_uses_translation_prefix_when_summary_unusable(self) -> None:
-        fallback = _summary_fallback_from_translation(
-            "這是一段足夠長的中文翻譯，用來作為摘要的替代品，包含技術細節與結論。",
-            "Chinese (Traditional)",
-        )
-
-        self.assertIsNotNone(fallback)
-        self.assertTrue(_summary_is_usable(fallback, "Chinese (Traditional)"))
-
-    def test_rejects_error_markers_and_english(self) -> None:
-        self.assertIsNone(
-            _summary_fallback_from_translation("[Translation error: boom]", "Chinese (Traditional)")
-        )
-        self.assertIsNone(
-            _summary_fallback_from_translation(
-                "This is a long English translation that should not become a summary.",
-                "Chinese (Traditional)",
-            )
-        )
-
-    def test_truncates_long_fallback(self) -> None:
-        fallback = _summary_fallback_from_translation(
-            "這是摘要" * 100, "Chinese (Traditional)"
-        )
-
-        self.assertLessEqual(len(fallback), 203)
-        self.assertTrue(fallback.endswith("..."))
-
-    def test_summary_is_usable_rejects_error_markers(self) -> None:
-        self.assertFalse(
-            _summary_is_usable("[Translation skipped: rate limited]", "Chinese (Traditional)")
-        )
-        self.assertTrue(_summary_is_usable("這是一段可用的中文摘要內容。", "Chinese (Traditional)"))
 
 
 class PinnedFeedConfigTest(unittest.TestCase):

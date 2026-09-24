@@ -20,3 +20,5 @@ test-compose.yml
 
 # Tooling debris
 .codex-remote-attachments/
+.mimosa/
+.pytest_cache/

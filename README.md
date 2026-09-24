@@ -17,8 +17,8 @@
 Blog Pusher watches a curated list of research and engineering blogs, translates every new post with an LLM provider, and emails the digest to you once per day. It started life as a Tao feed watcher, but now it operates as a general-purpose blog radar: drop any feed into `feeds/blogs.json`, deploy the workflow, and the system will keep your inbox synced with multilingual summaries.
 
 ## Features
-- Monitor dozens of RSS/Atom feeds defined in `feeds/blogs.json` plus any ad-hoc URLs you pass through `FEED_URL` / `BLOG_FEED_URL`.
-- Translate long-form content paragraph by paragraph while preserving math notation, LaTeX, links, and code blocks.
+- Monitor dozens of RSS/Atom feeds defined in `feeds/blogs.json` plus any ad-hoc URL you pass through `FEED_URL`.
+- Digest every new post with one structured LLM request that returns both a quick summary and the full translation (requests run in parallel), preserving math notation, LaTeX, links, and code blocks.
 - Collapse duplicate posts across feeds and send a single HTML digest with both the original body and the translated text.
 - Highlight each source with a color-coded badge and optional author / organization metadata pulled from the feed catalog so you can tell at a glance who wrote what.
 - Run as a zero-cost GitHub Actions workflow that emails you every day at 22:00 UTC (see `.github/workflows/main.yml`).
@@ -27,7 +27,7 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 ## How It Works
 1. The `Blog Pusher` workflow installs dependencies with `uv` and runs `main.py`.
 2. `main.py` loads feed URLs from `feeds/blogs.json` (plus any overrides), fetches items from the last `WINDOW_HOURS`, and deduplicates them.
-3. Each post is summarized in Chinese (target language configurable) with the configured LLM provider (`translation.py`, prompt: “請將下列技術文章摘要成不超過 200 個中文字，保留核心概念、關鍵步驟與主要結論，避免加入主觀評論，只呈現最重要的資訊。保持原有的數學符號、LaTeX、URL、Markdown 與程式碼區塊不變。”) and rendered into an email via `construct_email.py`. The quick summary section shows the full LLM output—no additional truncation.
+3. Each post is digested in a single OpenAI-compatible chat request (`translation.py`) that returns structured JSON with a Chinese summary (target language configurable) and the full translation, then rendered into an email via `construct_email.py`. The quick summary section shows the full LLM output—no additional truncation.
 4. The digest is sent through your SMTP server with the configured sender credentials.
 
 ## Deploy on GitHub
@@ -36,9 +36,8 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 
 | Secret | Required | Description | Example |
 | :--- | :---: | :--- | :--- |
-| `NVIDIA_API_KEY` | ✅ for NVIDIA | API key for NVIDIA hosted chat completions. | `nvapi-...` |
-| `OPENAI_API_KEY` | ✅ if NVIDIA is not set | API key for your OpenAI account. | `sk-...` |
-| `OPENAI_MODEL` | ✅ if NVIDIA is not set | Chat/completions model name (can also be a repository variable). | `gpt-4o-mini` |
+| `OPENAI_API_KEY` | ✅ | API key for your OpenAI account or any OpenAI-compatible provider. | `sk-...` |
+| `OPENAI_MODEL` | ✅ | Chat/completions model name (can also be a repository variable). | `gpt-4o-mini` |
 | `OPENAI_API_BASE` | ⬜ | Optional base URL for OpenAI-compatible endpoints (variable or secret). | `https://api.openai.com/v1` |
 | `SMTP_SERVER` | ✅ | Hostname of the SMTP server that sends email. | `smtp.gmail.com` |
 | `SMTP_PORT` | ✅ | Port for the SMTP server (supports STARTTLS and SMTPS fallback). | `587` |
@@ -52,14 +51,14 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | :--- | :--- | :--- |
 | `FEED_LIST` | `feeds/blogs.json` | Path (relative to repo root) to the JSON feed catalog. |
 | `FEED_URL` | *(blank)* | Extra feed URL to track in addition to the file. |
-| `BLOG_FEED_URL` | *(blank)* | Second legacy slot for quick experiments. |
 | `WINDOW_HOURS` | `24` | Look-back window when fetching posts. |
 | `MAX_POST_NUM` | `-1` | Limit on how many posts to send (`-1` keeps everything). |
 | `MAX_POSTS_PER_FEED` | `-1` | Limit on how many posts to keep per feed (`-1` keeps everything). |
 | `SEND_EMPTY` | `false` | Set to `true` to force an email even when no posts are new. |
 | `TARGET_LANGUAGE` | `Chinese (Traditional)` | Translation language. |
 | `TRANSLATION_MAX_CHARS` | `-1` | Cap characters per article sent for full translation (`-1` = translate the entire article). The original text in the email is never truncated. |
-| `TRANSLATION_CHUNK_CHARS` | `-1` | Chunk size for translation requests; `-1` sends the whole article to the model in a single request, `0` uses the built-in 4000-char chunks, a positive number sets a custom size. |
+| `TRANSLATION_CHUNK_CHARS` | `-1` | Chunk size for translation requests; `-1` sends the whole article to the model in a single request, a positive number splits long articles at that size. |
+| `TRANSLATION_WORKERS` | `4` | Number of articles digested concurrently. |
 | `EMAIL_SUBJECT_PREFIX` | `Blog Pusher Digest` | Prefix for the email subject line. |
 | `EMAIL_MAX_POSTS` | `5` | Maximum posts per digest email; extras split into `(2/3)`-style parts, each with its own summary + full text. |
 | `EMAIL_MAX_BYTES` | `90000` | Approximate HTML size cap per email (Gmail clips messages around 102KB). |
@@ -69,9 +68,6 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 | `STATE_FILE` | `state/last_run.json` | Run-state file (window end + delivered post IDs) committed back by the workflow so delayed or failed runs never leave gaps; set `none` to disable. |
 | `STATE_MAX_BACKTRACK_HOURS` | `72` | Cap on how far a resumed window may reach back after a long outage. |
 | `OPENAI_MAX_TOKENS` | `16384` | Output cap per LLM request (`0` = unset). Aggregators like OpenRouter price against the model max when unset, which can trigger a 402 on limited-credit keys. |
-| `NVIDIA_MODEL` | `z-ai/glm-5.2` | NVIDIA chat model used when `NVIDIA_API_KEY` is set. |
-| `NVIDIA_API_URL` | `https://integrate.api.nvidia.com/v1/chat/completions` | NVIDIA chat completions endpoint. |
-| `NVIDIA_RPM` | `4` | Maximum NVIDIA chat completion requests per minute. |
 
 4. **Trigger the workflow** from the Actions tab or wait for the nightly schedule — 22:00 UTC daily (01:00 UTC+3 the next day; digest timestamps render in UTC+3). Check the run logs and the uploaded `digest-*` artifacts for rendering and SMTP delivery details.
 
@@ -80,8 +76,9 @@ Blog Pusher watches a curated list of research and engineering blogs, translates
 ## Local Development
 ```bash
 uv sync
-export NVIDIA_API_KEY=...
-export NVIDIA_MODEL=z-ai/glm-5.2
+export OPENAI_API_KEY=...
+export OPENAI_MODEL=...
+# export OPENAI_API_BASE=...   # for OpenAI-compatible endpoints (Z.ai, Gemini, ...)
 # ...export the remaining SMTP + workflow variables...
 uv run main.py --debug
 ```
