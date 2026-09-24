@@ -4,7 +4,6 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import httpx
 from openai import BadRequestError
 
 from translation import PostDigest, Translator, looks_like_target_language
@@ -13,10 +12,20 @@ from translation import PostDigest, Translator, looks_like_target_language
 _TEST_AUTH_VALUE = "unit-test-dummy"
 
 
+class _FakeBadRequest(BadRequestError):
+    """BadRequestError with a duck-typed response.
+
+    Subclassing skips openai's __init__ (which requires a real HTTP
+    response object whose type changed across openai 1.x -> 3.x); the
+    translator only ever reads exc.response.json() and str(exc).
+    """
+
+    def __init__(self, payload: dict):
+        self.response = SimpleNamespace(json=lambda: payload)
+
+
 def _bad_request(payload: dict) -> BadRequestError:
-    request = httpx.Request("POST", "https://llm.example/v1/chat/completions")
-    response = httpx.Response(400, request=request, json=payload)
-    return BadRequestError("bad request", response=response, body=None)
+    return _FakeBadRequest(payload)
 
 
 def _rate_limit_error() -> Exception:

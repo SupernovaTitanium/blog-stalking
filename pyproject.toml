@@ -15,3 +15,8 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+# Repo-root modules (feeds, translation, ...) must be importable when
+# pytest runs as a console script, which does not add cwd to sys.path.
+pythonpath = ["."]
