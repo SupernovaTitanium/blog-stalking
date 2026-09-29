@@ -27,6 +27,10 @@ class RateLimitExhaustedError(Exception):
     """Raised after provider rate-limit retries have been exhausted."""
 
 
+class OutputTruncatedError(Exception):
+    """Raised when the model stopped because it hit the max_tokens cap."""
+
+
 def looks_like_target_language(text: str | None, target_language: str | None) -> bool:
     """Sanity check that LLM output actually matches the target language.
 
@@ -47,16 +51,27 @@ def looks_like_target_language(text: str | None, target_language: str | None) ->
     return cjk_count >= 4 or (cjk_count >= 2 and latin_count <= cjk_count * 4)
 
 
+# Markers that a later retry could still turn into a real translation.
+# Permanent outcomes (content filter, truncation that cannot be split further)
+# are delivered with their marker instead, so they cannot block a run forever.
+_RETRYABLE_MARKERS = ("[Translation error", "[Translation skipped: rate limited")
+
+
 @dataclass
 class PostDigest:
     summary: str
     translation: str
+
+    @property
+    def failed(self) -> bool:
+        return any(marker in self.translation for marker in _RETRYABLE_MARKERS)
 
 
 class Translator:
     INVALID_RESPONSE = "[Translation error: invalid structured response]"
     RATE_LIMITED = "[Translation skipped: rate limited]"
     FILTERED = "[Translation skipped: blocked by content filter]"
+    TRUNCATED = "[Translation skipped: output truncated by max_tokens]"
     SUMMARY_MAX_CHARS = 200
 
     def __init__(
@@ -152,13 +167,19 @@ class Translator:
                 ],
                 formats=(self._response_format(), {"type": "json_object"}, None),
             )
+            if finish_reason == "length":
+                raise OutputTruncatedError(
+                    f"Model stopped at max_tokens={self.max_tokens}"
+                )
             if finish_reason == "content_filter" or not content:
                 raise ContentFilterTriggeredError(
                     f"Model returned finish_reason={finish_reason!r}"
                 )
             return self._parse_digest(content)
         except ContentFilterTriggeredError as exc:
-            return self._handle_content_filter(chunk, _depth, str(exc))
+            return self._split_and_retry(chunk, _depth, str(exc), self.FILTERED)
+        except OutputTruncatedError as exc:
+            return self._split_and_retry(chunk, _depth, str(exc), self.TRUNCATED)
         except RateLimitExhaustedError:
             logger.warning(
                 "Digest skipped because provider rate limit was exhausted; "
@@ -233,7 +254,7 @@ class Translator:
         if getattr(response, "status_code", None) == 429:
             return True
         text = str(exc).lower()
-        return "429" in text or "too many requests" in text or "rate limit" in text
+        return "too many requests" in text or "rate limit" in text
 
     def _is_transient_error(self, exc: Exception) -> bool:
         status_code = getattr(exc, "status_code", None)
@@ -488,9 +509,14 @@ class Translator:
             start = end
         return [piece for piece in pieces if piece]
 
-    def _handle_content_filter(
-        self, chunk: str, depth: int, reason: str
+    def _split_and_retry(
+        self, chunk: str, depth: int, reason: str, fallback: str
     ) -> tuple[str, str]:
+        """Halve a chunk the model could not finish and digest each half.
+
+        Used for content-filter blocks and max_tokens truncation; ``fallback``
+        is the marker returned once the chunk can no longer be split.
+        """
         can_retry = depth < self._max_filter_depth and len(chunk) > 200
         parts: list[str] = []
         if can_retry:
@@ -499,14 +525,14 @@ class Translator:
 
         log_fn = logger.info if can_retry else logger.warning
         log_fn(
-            "Content filter blocked digest (depth={}, chars={}): {}",
+            "Digest chunk could not be completed (depth={}, chars={}): {}",
             depth,
             len(chunk),
             reason[:180],
         )
 
         if not can_retry:
-            return self.FILTERED, self.FILTERED
+            return fallback, fallback
 
         summary = translation = ""
         for index, part in enumerate(parts):
@@ -518,7 +544,7 @@ class Translator:
                 if translation or part_translation
                 else part_translation
             )
-        return summary or self.FILTERED, translation or self.FILTERED
+        return summary or fallback, translation or fallback
 
     def _split_for_filter(self, text: str) -> list[str]:
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]

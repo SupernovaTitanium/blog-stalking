@@ -19,6 +19,7 @@ from construct_email import render_email, send_email
 from feeds import FeedConfig, FeedPost, fetch_recent_posts, load_feed_configs_from_file
 from run_state import (
     DEFAULT_STATE_FILE,
+    STATE_GRACE_MINUTES,
     RunState,
     effective_cutoff,
     load_run_state,
@@ -141,7 +142,7 @@ def _register_arguments() -> argparse.Namespace:
     _add_argument(
         "--email_max_posts",
         type=int,
-        default=15,
+        default=5,
         help="Maximum posts per digest email before splitting into parts.",
     )
     _add_argument(
@@ -417,9 +418,10 @@ def _attach_metadata(posts: list[FeedPost], metadata_by_url: dict[str, FeedConfi
         post.pinned = bool(meta.pinned) if meta else False
 
 
-def _translate_posts(posts: list[FeedPost], args: argparse.Namespace) -> None:
+def _translate_posts(posts: list[FeedPost], args: argparse.Namespace) -> list[FeedPost]:
+    """Digest posts in place and return those whose digest failed (retryable)."""
     if not posts:
-        return
+        return []
     logger.info(
         "Digesting {} post(s) with model {} using {} worker(s).",
         len(posts),
@@ -442,16 +444,25 @@ def _translate_posts(posts: list[FeedPost], args: argparse.Namespace) -> None:
             for text in texts
         ]
     digests = translator.digest_texts(texts)
-    for post, digest in zip(posts, digests, strict=False):
+    failed: list[FeedPost] = []
+    for post, digest in zip(posts, digests, strict=True):
         post.summary = digest.summary
         post.translation = digest.translation
+        if digest.failed:
+            failed.append(post)
+            logger.warning(f"Digest failed for {post.url}: {digest.translation[:160]}")
+    return failed
 
 
 def _deliver_digest_emails(
     posts: list[FeedPost],
     args: argparse.Namespace,
-) -> None:
-    """Render, archive, and send the digest, split into size-capped parts."""
+) -> tuple[list[FeedPost], list[str]]:
+    """Render, archive, and send the digest, split into size-capped parts.
+
+    Returns (posts that were actually emailed, one failure text per part that
+    could not be sent) so the caller records only delivered posts.
+    """
     batches = _split_posts_for_email(
         posts, max_posts=args.email_max_posts, max_bytes=args.email_max_bytes
     )
@@ -462,7 +473,8 @@ def _deliver_digest_emails(
         if not html_dir.is_absolute():
             html_dir = Path(__file__).resolve().parent / html_dir
 
-    failures: list[tuple[int, str]] = []
+    sent: list[FeedPost] = []
+    failures: list[str] = []
     total = len(batches)
     for part, batch in enumerate(batches, 1):
         subject = f"{args.email_subject_prefix} {date_str}"
@@ -487,14 +499,13 @@ def _deliver_digest_emails(
                 subject=subject,
             )
         except Exception as exc:
-            failures.append((part, f"{type(exc).__name__}: {exc}"))
+            failures.append(f"email part {part}/{total}: {type(exc).__name__}: {exc}")
             logger.error(f"Email {part}/{total} failed: {type(exc).__name__}: {exc}")
-    if failures:
-        raise RuntimeError(
-            f"{len(failures)} of {total} digest email(s) failed to send: "
-            + "; ".join(f"part {part}: {reason}" for part, reason in failures)
-        )
-    logger.success(f"Digest sent successfully ({total} email(s), {len(posts)} post(s)).")
+            continue
+        sent.extend(batch)
+    if not failures:
+        logger.success(f"Digest sent successfully ({total} email(s), {len(posts)} post(s)).")
+    return sent, failures
 
 
 def main() -> None:
@@ -554,29 +565,59 @@ def main() -> None:
             )
         posts = fresh_posts
 
-    if limit is not None and limit > 0:
+    capped_out = 0
+    if limit is not None and limit > 0 and len(posts) > limit:
+        capped_out = len(posts) - limit
         posts = posts[-limit:]
 
-    def _persist_run_state() -> None:
+    def _persist_run_state(delivered: list[FeedPost], *, incomplete: bool) -> None:
+        """Record delivered posts; hold the window when anything was left behind.
+
+        An incomplete run (failed feed, failed digest/email, posts cut by
+        --max_post_num) must not advance ``window_end``: the next run reaches
+        back to this run's cutoff and ``seen_posts`` suppresses what was
+        already delivered.
+        """
         if state_path is None:
             return
+        window_end = (
+            cutoff + dt.timedelta(minutes=STATE_GRACE_MINUTES)
+            if incomplete
+            else run_started_at
+        )
         save_run_state(
             state_path,
-            window_end=run_started_at,
-            post_keys=[_post_key(p) for p in posts],
+            window_end=window_end,
+            post_keys=[_post_key(p) for p in delivered],
             previous=state,
         )
-        logger.info(f"Run state saved to {state_path}")
+        logger.info(f"Run state saved to {state_path} (window held: {incomplete})")
 
-    if not posts:
+    feeds_incomplete = bool(failed_feeds) or capped_out > 0
+
+    if not posts and not args.send_empty:
         logger.info("No new posts found in the requested window.")
-        if not args.send_empty:
-            _persist_run_state()
-            return
+        _persist_run_state([], incomplete=feeds_incomplete)
+        return
 
-    _translate_posts(posts, args)
-    _deliver_digest_emails(posts, args)
-    _persist_run_state()
+    failed_posts = _translate_posts(posts, args)
+    failed_ids = {id(p) for p in failed_posts}
+    deliverable = [p for p in posts if id(p) not in failed_ids]
+
+    sent: list[FeedPost] = []
+    problems: list[str] = []
+    if deliverable or not posts:
+        sent, email_failures = _deliver_digest_emails(deliverable, args)
+        problems.extend(email_failures)
+    if failed_posts:
+        problems.append(
+            f"{len(failed_posts)} post(s) not translated and held back for retry: "
+            + ", ".join(p.url for p in failed_posts)
+        )
+
+    _persist_run_state(sent, incomplete=feeds_incomplete or bool(problems))
+    if problems:
+        raise RuntimeError("Digest run incomplete: " + "; ".join(problems))
 
 
 if __name__ == "__main__":

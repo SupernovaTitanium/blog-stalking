@@ -14,7 +14,7 @@ services:
       - EMAIL_SUBJECT_PREFIX=Blog Pusher Digest
       - OPENAI_API_KEY=your-openai-key
       - OPENAI_MODEL=gpt-4o-mini
-      - OPENAI_BASE_URL=https://api.openai.com/v1
+      - OPENAI_API_BASE=https://api.openai.com/v1
       - SMTP_SERVER=smtp.gmail.com
       - SMTP_PORT=587
       - SENDER=your_email@example.com

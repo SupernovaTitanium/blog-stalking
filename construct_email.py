@@ -344,7 +344,16 @@ def _find_math_close(text: str, close: str, start: int) -> int:
     pos = text.find(close, start)
     while pos != -1:
         if not _is_escaped(text, pos):
-            if close != "$" or pos + 1 >= len(text) or text[pos + 1] != "$":
+            if close != "$":
+                return pos
+            # Single-dollar math: not "$$", not preceded by whitespace and not
+            # followed by a digit, so prices like "$5 ... $10" stay plain text.
+            next_char = text[pos + 1] if pos + 1 < len(text) else ""
+            if (
+                next_char != "$"
+                and not next_char.isdigit()
+                and not text[pos - 1].isspace()
+            ):
                 return pos
         pos = text.find(close, pos + len(close))
     return -1
