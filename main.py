@@ -321,11 +321,12 @@ def _split_posts_for_email(
         return [[]]
 
     def estimate(post: FeedPost) -> int:
+        # UTF-8 bytes, not characters: CJK text is ~3 bytes per character.
         return (
-            len(post.content_html or "")
-            + len(post.translation or "")
-            + len(post.summary or "")
-            + len(post.title or "")
+            len((post.content_html or "").encode("utf-8"))
+            + len((post.translation or "").encode("utf-8"))
+            + len((post.summary or "").encode("utf-8"))
+            + len((post.title or "").encode("utf-8"))
             + 2048  # templates, badges, anchors, metadata
         )
 

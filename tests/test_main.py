@@ -86,6 +86,19 @@ class SplitPostsForEmailTest(unittest.TestCase):
 
         self.assertEqual([len(b) for b in batches], [2, 1])
 
+    def test_size_estimate_counts_utf8_bytes_for_cjk(self) -> None:
+        # 2,000 CJK characters are ~6,000 bytes, so two posts (~8KB each with
+        # overhead) cannot share a 12,500-byte email even though their
+        # character count alone would fit.
+        posts = [
+            _post("https://example.com/1", content_html="<p>" + "中" * 2000 + "</p>"),
+            _post("https://example.com/2", content_html="<p>" + "文" * 2000 + "</p>"),
+        ]
+
+        batches = _split_posts_for_email(posts, max_posts=10, max_bytes=12500)
+
+        self.assertEqual([len(b) for b in batches], [1, 1])
+
     def test_oversized_single_post_still_delivered_alone(self) -> None:
         huge = _post("https://example.com/huge", content_html="x" * 200_000)
         small = _post("https://example.com/small")
