@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import argparse
+import io
 import unittest
+from unittest.mock import patch
+
+import main
 from datetime import datetime, timezone
 
 from feeds import FeedPost, load_feed_configs_from_file
@@ -136,6 +141,54 @@ class PinnedFeedConfigTest(unittest.TestCase):
 
         self.assertFalse(configs[0].pinned)
         self.assertTrue(configs[1].pinned)
+
+
+class ReasoningEffortArgumentsTest(unittest.TestCase):
+    def _parse(self, flags=(), env=None):
+        with (
+            patch.object(main, "parser", argparse.ArgumentParser()),
+            patch.dict("os.environ", env or {}, clear=True),
+            patch("sys.argv", ["main.py", *flags]),
+        ):
+            return main._register_arguments()
+
+    def test_unset_effort_is_none(self) -> None:
+        self.assertIsNone(self._parse().openai_reasoning_effort)
+
+    def test_legal_cli_values(self) -> None:
+        for effort in ("none", "minimal", "low", "medium", "high", "xhigh", "max"):
+            with self.subTest(effort=effort):
+                args = self._parse(["--openai_reasoning_effort", effort])
+                self.assertEqual(args.openai_reasoning_effort, effort)
+
+    def test_empty_env_is_unset(self) -> None:
+        self.assertIsNone(self._parse(env={"OPENAI_REASONING_EFFORT": ""}).openai_reasoning_effort)
+
+    def test_env_max_and_cli_override(self) -> None:
+        env = {"OPENAI_REASONING_EFFORT": "max"}
+        self.assertEqual(self._parse(env=env).openai_reasoning_effort, "max")
+        args = self._parse(["--openai_reasoning_effort", "high"], env)
+        self.assertEqual(args.openai_reasoning_effort, "high")
+
+    def test_invalid_cli_and_env_are_rejected(self) -> None:
+        for flags, env in (
+            (["--openai_reasoning_effort", "maximum"], {}),
+            ([], {"OPENAI_REASONING_EFFORT": "maximum"}),
+        ):
+            with self.subTest(flags=flags, env=env):
+                with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit):
+                    self._parse(flags, env)
+
+    def test_translate_posts_forwards_effort(self) -> None:
+        args = self._parse(["--openai_reasoning_effort", "max"])
+        with patch("main.Translator") as translator:
+            from translation import PostDigest
+
+            translator.return_value.digest_texts.return_value = [PostDigest("摘要", "翻譯")]
+            post = _post("https://example.com/post")
+            self.assertEqual(main._translate_posts([post], args), [])
+            self.assertEqual(translator.call_args.kwargs["reasoning_effort"], "max")
+            self.assertEqual(post.translation, "翻譯")
 
 
 if __name__ == "__main__":

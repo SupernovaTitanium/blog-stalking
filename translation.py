@@ -19,6 +19,9 @@ from loguru import logger
 from openai import BadRequestError, OpenAI
 
 
+REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+
+
 class ContentFilterTriggeredError(Exception):
     """Raised when the model returns a content-filtered response."""
 
@@ -82,6 +85,7 @@ class Translator:
         target_language: str,
         base_url: str | None = None,
         max_tokens: int | None = None,
+        reasoning_effort: str | None = None,
         chunk_chars: int = -1,
         workers: int = 4,
         rate_limit_retries: int = 4,
@@ -89,6 +93,12 @@ class Translator:
         transient_retries: int = 2,
         transient_base_sleep: float = 5.0,
     ):
+        if reasoning_effort is not None and reasoning_effort not in REASONING_EFFORTS:
+            raise ValueError(
+                f"Invalid reasoning_effort: {reasoning_effort!r}; "
+                f"choose from {', '.join(REASONING_EFFORTS)}"
+            )
+        self.reasoning_effort = reasoning_effort
         self.client = OpenAI(
             api_key=(api_key or "").strip(),
             base_url=(base_url or "").strip() or None,
@@ -207,6 +217,8 @@ class Translator:
             kwargs["response_format"] = response_format
         if self.max_tokens:
             kwargs["max_tokens"] = self.max_tokens
+        if self.reasoning_effort is not None:
+            kwargs["reasoning_effort"] = self.reasoning_effort
 
         def request_once() -> tuple[str, str | None]:
             response = self.client.chat.completions.create(**kwargs)
@@ -323,13 +335,12 @@ class Translator:
             texts.append(str(error.get("code") or ""))
             texts.append(str(error.get("message") or ""))
             texts.append(str(error.get("type") or ""))
+            param = str(error.get("param") or "").lower()
+            if param:
+                return param == "response_format" or param.startswith("response_format.")
 
         haystack = " ".join(texts).lower()
-        return (
-            "response_format" in haystack
-            or "json_schema" in haystack
-            or "unsupported" in haystack
-        )
+        return "response_format" in haystack or "json_schema" in haystack
 
     def _chat_with_format_fallback(
         self,

@@ -179,6 +179,25 @@ class TranslatorOptionsTest(unittest.TestCase):
 
         self.assertNotIn("max_tokens", create_mock.call_args.kwargs)
 
+    def test_reasoning_effort_sent_only_when_set(self) -> None:
+        for effort in (None, "none", "minimal", "low", "medium", "high", "xhigh", "max"):
+            with self.subTest(effort=effort):
+                translator = self._translator(reasoning_effort=effort)
+                create_mock = MagicMock(
+                    return_value=_response('{"summary":"摘要","translation":"翻譯"}')
+                )
+                translator.client.chat.completions.create = create_mock
+                translator.digest_texts(["text"])
+                if effort is None:
+                    self.assertNotIn("reasoning_effort", create_mock.call_args.kwargs)
+                else:
+                    self.assertEqual(create_mock.call_args.kwargs["reasoning_effort"], effort)
+
+    def test_invalid_reasoning_effort_rejected_before_client_creation(self) -> None:
+        with patch("translation.OpenAI") as client, self.assertRaises(ValueError):
+            self._translator(reasoning_effort="maximum")
+        client.assert_not_called()
+
     def test_base_url_is_forwarded_to_client(self) -> None:
         translator = self._translator(base_url="https://api.z.ai/api/coding/paas/v4")
         self.assertEqual(
@@ -309,6 +328,49 @@ class RetryPolicyTest(unittest.TestCase):
             create_mock.call_args_list[-1].kwargs["response_format"],
             {"type": "json_object"},
         )
+
+    def test_effort_preserved_through_retry_and_all_format_fallbacks(self) -> None:
+        translator = self._translator(reasoning_effort="max", transient_retries=1)
+        transient = Exception("server error")
+        transient.status_code = 503
+        create_mock = MagicMock(side_effect=[
+            transient,
+            _bad_request({"error": {"param": "response_format", "message": "unsupported"}}),
+            _bad_request({"error": {"message": "json_object response_format unsupported"}}),
+            _response('{"summary":"摘要","translation":"翻譯"}'),
+        ])
+        translator.client.chat.completions.create = create_mock
+        with patch("translation.time.sleep"):
+            digests = translator.digest_texts(["source text"])
+        self.assertEqual(digests[0].translation, "翻譯")
+        calls = create_mock.call_args_list
+        self.assertEqual(len(calls), 4)
+        self.assertEqual([call.kwargs["reasoning_effort"] for call in calls], ["max"] * 4)
+        self.assertEqual(calls[0].kwargs["response_format"]["type"], "json_schema")
+        self.assertEqual(calls[1].kwargs["response_format"]["type"], "json_schema")
+        self.assertEqual(calls[2].kwargs["response_format"], {"type": "json_object"})
+        self.assertNotIn("response_format", calls[3].kwargs)
+
+    def test_unrelated_unsupported_errors_do_not_degrade_format(self) -> None:
+        for error in (
+            {"code": "unsupported", "message": "reasoning_effort max unsupported"},
+            {"code": "unsupported", "param": "reasoning_effort", "message": "unsupported"},
+            {"param": "reasoning_effort", "message": "unsupported with response_format json_schema"},
+            {"code": "unsupported", "param": "model", "message": "unsupported"},
+            {"code": "unsupported", "message": "unsupported parameter"},
+        ):
+            with self.subTest(error=error):
+                translator = self._translator(reasoning_effort="max")
+                exc = _bad_request({"error": error})
+                create_mock = MagicMock(side_effect=exc)
+                translator.client.chat.completions.create = create_mock
+                with self.assertRaises(BadRequestError):
+                    translator._chat_with_format_fallback(
+                        messages=[{"role": "user", "content": "text"}],
+                        formats=(translator._response_format(), {"type": "json_object"}, None),
+                    )
+                self.assertEqual(create_mock.call_count, 1)
+                self.assertEqual(create_mock.call_args.kwargs["reasoning_effort"], "max")
 
     def test_content_filter_marks_unsplittable_chunk(self) -> None:
         translator = self._translator()

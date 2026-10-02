@@ -82,7 +82,26 @@ export OPENAI_MODEL=...
 # ...export the remaining SMTP + workflow variables...
 uv run main.py --debug
 ```
-The script reads either CLI flags or environment variables. Use `--feed_list` to point at a different JSON file when testing.
+程式啟動時會讀取 `.env`，也接受 CLI 參數或環境變數；CLI 優先於 `.env`。測試不同來源清單時可使用 `--feed_list`。
+
+### 本機 OpenAI-compatible 端點
+
+使用既有帳戶與本機代理時，可在不納入版本控制的 `.env` 設定下列非機密參數；`OPENAI_API_KEY` 另填既有憑證，不要寫入程式碼或日誌。
+
+```dotenv
+OPENAI_API_BASE=http://127.0.0.1:10100/v1
+OPENAI_MODEL=gpt-6-luna
+OPENAI_REASONING_EFFORT=max
+TRANSLATION_WORKERS=1
+```
+
+`--openai_reasoning_effort` 或 `OPENAI_REASONING_EFFORT` 為選填，接受 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。未設定或環境變數為空字串時，不傳送 `reasoning_effort`，沿用供應商預設；`none` 則是明確傳給供應商的值。實際支援值由模型及端點決定，本機驗證通過不代表供應商一定接受，也不會自動降低 effort。格式不支援時仍依序嘗試 `json_schema`、`json_object`、不指定格式，且保留原 effort。
+
+**`--debug` 只增加日誌，不是 dry-run，仍可能寄信並寫入 state。** 不寄信的驗收應僅呼叫 `Translator.digest_texts()`，並視需要以 `construct_email.render_email()` 產生 HTML；不要執行 `main.py`。Windows 既有虛擬環境的 mock 測試可用下列命令，不需要模型端點或 SMTP。
+
+```bash
+.venv/Scripts/python.exe -m pytest tests/test_main.py tests/test_translation.py -q
+```
 
 ## Test Workflow
 The `.github/workflows/test.yml` job runs against a small debug list (`feeds/test-blogs.json`) of five blogs (Tao, Simon Willison, John D. Cook, Theory of Computing Report, Redwood Research) and keeps at most two posts per feed. It records two logs that are uploaded as the `testflow-logs` artifact: `artifacts/testflow.log` (full debug output) and `artifacts/feed_failures.log` (one line per skipped feed with the exception). Reproduce locally with:

@@ -25,7 +25,7 @@ from run_state import (
     load_run_state,
     save_run_state,
 )
-from translation import Translator
+from translation import REASONING_EFFORTS, Translator
 
 load_dotenv(override=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -178,6 +178,14 @@ def _register_arguments() -> argparse.Namespace:
         "OpenRouter price against the model max when unset, which can "
         "trigger 402 on limited-credit keys.",
     )
+    _add_argument(
+        "--openai_reasoning_effort",
+        type=str,
+        choices=REASONING_EFFORTS,
+        default=None,
+        help="Optional reasoning effort; omit to use the provider default. "
+        "Supported values depend on the model and endpoint.",
+    )
     _add_argument("--smtp_server", type=str, help="SMTP server hostname.")
     _add_argument(
         "--smtp_port",
@@ -202,6 +210,15 @@ def _register_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--debug", action="store_true", help="Enable verbose logging.")
     args = parser.parse_args()
+    # argparse does not validate choices for environment-backed defaults.
+    if (
+        args.openai_reasoning_effort is not None
+        and args.openai_reasoning_effort not in REASONING_EFFORTS
+    ):
+        parser.error(
+            "invalid OPENAI_REASONING_EFFORT: "
+            f"{args.openai_reasoning_effort!r} (choose from {', '.join(REASONING_EFFORTS)})"
+        )
 
     logger.remove()
     logger.add(sys.stdout, level="DEBUG" if args.debug else "INFO")
@@ -434,6 +451,7 @@ def _translate_posts(posts: list[FeedPost], args: argparse.Namespace) -> list[Fe
         model=args.openai_model,
         target_language=args.target_language,
         max_tokens=args.openai_max_tokens if args.openai_max_tokens > 0 else None,
+        reasoning_effort=args.openai_reasoning_effort,
         chunk_chars=args.translation_chunk_chars,
         workers=args.translation_workers,
     )
